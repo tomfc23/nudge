@@ -129,6 +129,48 @@ you only ever need notifications on your own Wi-Fi.
 
 Ask the agent: *"send me an ntfy test notification"* — it will use the `ntfy_notify` tool.
 
+## Access modes: local / Tailscale / Cloudflare
+
+The plugin talks plain HTTP to whatever `serverUrl` you give it, so all three ways of
+reaching a self-hosted ntfy server work out of the box. One script provisions any of them:
+
+```bash
+./scripts/setup-server.sh local        # phone on the same Wi-Fi  → http://192.168.x.x
+./scripts/setup-server.sh tailscale    # private tailnet          → https://<machine>.<tailnet>.ts.net
+./scripts/setup-server.sh cloudflare   # public via CF Tunnel     → https://ntfy.example.com
+```
+
+The script is **idempotent** — re-run it with another mode to switch (then re-add the
+phone subscriptions, which are keyed by server URL). It writes the compose file, enables
+auth (anonymous read-only + token), configures iOS instant push, handles the mode extras
+(`tailscale serve` proxy / cloudflared tunnel + DNS + launchd persistence), smoke-tests
+the result, and prints your exact `opencode.json` snippet.
+
+> **First run on a tailnet?** Tailscale gates `serve` behind a one-time admin
+> approval — the script prints the `login.tailscale.com/f/serve` link, waits
+> briefly, then tells you to approve it and re-run. Nothing else blocks.
+
+| Mode | Phone needs | Works | Notes |
+|---|---|---|---|
+| **local** | same Wi-Fi | home only | simplest; plain http fine on a trusted LAN |
+| **tailscale** | Tailscale app (enable *Connect on Demand*) | anywhere | private, no public exposure; free `*.ts.net` TLS names |
+| **cloudflare** | nothing | anywhere | public URL; keep server auth on (script does) |
+
+**iOS instant push caveat:** the server's `base-url` must equal the URL the phone
+subscribes with (the wake-up signal is keyed to `SHA256(base-url + "/" + topic)`).
+The script sets this per mode — that's why switching modes means re-subscribing.
+
+The plugin auto-detects the mode from `serverUrl` and prints guidance at startup:
+
+```
+[ntfy] access mode: cloudflare — phone reaches the server over the public internet via a tunnel/proxy
+[ntfy] hint: works anywhere (cellular, work, travel) — no VPN or same-Wi-Fi needed
+```
+
+If detection can't see your intent (e.g. the plugin publishes via `http://127.0.0.1`
+while the phone uses a tunnel URL), set `"accessMode": "local" | "tailscale" | "cloudflare"`
+explicitly in the options.
+
 ## What you get
 
 | Event | Trigger | Default topic | Default priority |
@@ -154,6 +196,7 @@ All keys are optional — defaults shown:
         "serverUrl": "http://your-server-ip",
         "token": "{env:NTFY_TOKEN}",
         "baseTopic": "opencode-mytopic",
+        "accessMode": "auto",
 
         "events": {
           "question": { "enabled": true, "priority": "urgent", "tags": ["question"],
@@ -178,6 +221,8 @@ All keys are optional — defaults shown:
   (fine for auth-disabled servers).
 - **`baseTopic`** – auto-generated once and persisted on first run if unset; the four topics
   are `{base}-question|finished|error|custom`.
+- **`accessMode`** – `"auto"` (default) detects local/tailscale/cloudflare from `serverUrl`
+  for startup guidance; set explicitly when the publishing URL differs from the phone's URL.
 - **`events.*.priority`** – `min|low|default|high|urgent` or `1`–`5`.
 - **`events.question.idleMode`** – how a plain turn-end is classified:
   - `"heuristic"` (default): trailing `?` or a question phrase anywhere → question.

@@ -11,6 +11,7 @@
 
 import type { PluginOptions } from "@opencode/plugin"
 import { randomUUID } from "node:crypto"
+import { resolveAccess } from "./access"
 import type { IdleMode } from "./classify"
 
 /** Structural view of ctx.storage (Plugin.Context["storage"]). */
@@ -195,6 +196,12 @@ export async function readConfig(options: PluginOptions, storage: StorageLike): 
   }
 
   info.push(`server: ${serverUrl}`)
+  // Access mode: local / tailscale / cloudflare (auto-detected, or forced via the
+  // `accessMode` option). Only affects guidance — publishing is mode-agnostic.
+  const access = resolveAccess(serverUrl, options.accessMode)
+  info.push(`access mode: ${access.mode} — ${access.summary}`)
+  for (const hint of access.hints) info.push(`hint: ${hint}`)
+  for (const warning of access.warnings) info.push(`warning: ${warning}`)
   info.push(
     config.token
       ? "auth: access token configured"

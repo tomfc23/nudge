@@ -4,6 +4,7 @@
  */
 
 import assert from "node:assert/strict"
+import { detectAccess } from "../src/access"
 import { classify, excerpt, preprocess } from "../src/classify"
 import { readConfig, type StorageLike } from "../src/config"
 import { watchEvents, type EventsDeps } from "../src/events"
@@ -236,6 +237,60 @@ async function main() {
   await test("startup info lists subscribe topics", async () => {
     const res = await readConfig({ serverUrl: "http://t", baseTopic: "bt" }, fakeStorage())
     assert.ok(res.info.some((l) => l.includes("bt-question")))
+  })
+
+  console.log("access modes (local / tailscale / cloudflare)")
+  await test("loopback → local mode with loopback warning and phone hint", () => {
+    const a = detectAccess("http://127.0.0.1:8080")
+    assert.equal(a.mode, "local")
+    assert.ok(a.warnings.some((w) => /loopback/.test(w)), "warns phone can't use loopback")
+    assert.ok(a.hints.some((h) => /phone/.test(h)))
+  })
+  await test("private LAN IP → local mode, no warnings", () => {
+    const a = detectAccess("http://192.168.1.42")
+    assert.equal(a.mode, "local")
+    assert.equal(a.warnings.length, 0)
+    assert.ok(a.summary.includes("LAN"))
+    // Same for 10.x and 172.16-31.x
+    assert.equal(detectAccess("http://10.0.5.5").mode, "local")
+    assert.equal(detectAccess("http://172.20.1.1").mode, "local")
+  })
+  await test("ts.net hostname and 100.64–127 CGNAT IPs → tailscale", () => {
+    assert.equal(detectAccess("https://mac-abc123.tail1234.ts.net").mode, "tailscale")
+    assert.equal(detectAccess("http://100.64.0.10").mode, "tailscale")
+    assert.equal(detectAccess("https://100.101.102.103").mode, "tailscale")
+    assert.notEqual(detectAccess("https://100.8.9.10").mode, "tailscale") // outside CGNAT slice
+  })
+  await test("public https (tunnel/reverse proxy) → cloudflare, no warnings", () => {
+    const a = detectAccess("https://ntfy.example.com")
+    assert.equal(a.mode, "cloudflare")
+    assert.equal(a.warnings.length, 0)
+    assert.ok(a.hints.some((h) => /anywhere/.test(h)))
+  })
+  await test("public http → cloudflare with TLS warning", () => {
+    const a = detectAccess("http://203.0.113.7")
+    assert.equal(a.mode, "cloudflare")
+    assert.ok(a.warnings.some((w) => /TLS/.test(w)))
+  })
+  await test("trycloudflare quick tunnel → restart warning", () => {
+    const a = detectAccess("https://random-words.trycloudflare.com")
+    assert.equal(a.mode, "cloudflare")
+    assert.ok(a.warnings.some((w) => /quick tunnel/.test(w)))
+  })
+  await test("unparseable serverUrl → warning, publishing will fail loudly", () => {
+    const a = detectAccess("ntfy.example.com") // missing scheme
+    assert.ok(a.warnings.some((w) => /not a valid URL/.test(w)))
+  })
+  await test("accessMode option overrides detection; invalid value falls back to auto", async () => {
+    const forced = await readConfig({ serverUrl: "http://127.0.0.1", accessMode: "tailscale" }, fakeStorage())
+    assert.ok(forced.info.some((l) => l.includes("access mode: tailscale")))
+    const invalid = await readConfig({ serverUrl: "http://127.0.0.1", accessMode: "wat" }, fakeStorage())
+    assert.ok(invalid.info.some((l) => l.includes("access mode: local")))
+  })
+  await test("startup info includes access mode line and hints", async () => {
+    const res = await readConfig({ serverUrl: "https://ntfy.example.com", baseTopic: "bt" }, fakeStorage())
+    assert.ok(res.info.some((l) => l.includes("access mode: cloudflare")))
+    assert.ok(res.info.some((l) => l.startsWith("hint: ")))
   })
 
   console.log("events → publish (end-to-end)")
