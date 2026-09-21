@@ -78,20 +78,52 @@ persisted automatically on first run.
 4. Subscribe to those four topics in the app (topic = the random-looking name; anyone who knows
    it can read it, which is why it has an unguessable suffix).
 
-> **iOS background delivery:** iOS shows notifications best via Firebase (ntfy "maintainer
-> mode") or UnifiedPush. Without it, notifications still arrive while the app is in the
-> foreground/nearby. See [ntfy iOS docs](https://docs.ntfy.sh/publish/#desktop-mobile-apps).
+> **iOS background delivery:** set `upstream-base-url: "https://ntfy.sh"` on your ntfy server
+> (see next section). Your server then forwards a tiny wake-up signal (message ID only — never
+> the content) to ntfy.sh, which pushes to your phone via Firebase/APNS. This is ntfy's
+> official mechanism for self-hosted + iOS, and it is verified working: notifications land on
+> the lock screen even with the app closed.
 
-### 4. (Optional) Auth
+### 4. iOS instant push + public access (recommended)
 
-Only if your server requires authentication to publish:
+Three one-liners make the setup work from anywhere, delivered instantly even with the app
+backgrounded — this is the exact configuration this plugin was developed and verified against:
 
-```bash
-export NTFY_TOKEN="tk_..."        # from: ntfy token   (or: ntfy login)
+```yaml
+# ~/ntfy/etc/server.yml
+base-url: "https://ntfy.yourdomain.com"     # your public URL
+auth-file: "/var/cache/ntfy/user.db"        # enable auth ...
+auth-default-access: "read-only"            # ... anonymous may SUBSCRIBE, but NOT publish
+upstream-base-url: "https://ntfy.sh"         # iOS background push via APNS (content never leaves your server)
 ```
 
-or in config: `"token": "{env:NTFY_TOKEN}"` or the literal token. If publishing returns
+Then create a user + token for the plugin (the phone needs no credentials — it only subscribes):
+
+```bash
+NTFY_PASSWORD=... docker compose exec -T ntfy ntfy user add --role=admin you
+docker compose exec -T ntfy ntfy token add you   # → put in "token" below
+```
+
+**Publishing auth** (required once `auth-default-access` is not `read-write`):
+
+```json
+"options": { "serverUrl": "https://ntfy.yourdomain.com", "token": "tk_..." }
+```
+
+`token` accepts a literal, `"{env:NAME}"`, or the `NTFY_TOKEN` env var. If publishing returns
 `401/403`, the log tells you exactly this.
+
+**Remote access** — expose the server with a [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/):
+
+```bash
+cloudflared tunnel create ntfy
+# ~/.cloudflared/config.yml → hostname ntfy.yourdomain.com → service http://localhost:80
+cloudflared tunnel route dns ntfy ntfy.yourdomain.com
+cloudflared tunnel run ntfy       # persist via a launchd LaunchAgent (RunAtLoad + KeepAlive)
+```
+
+Any reverse proxy (nginx/Caddy/Tailscale Funnel) works the same; plain LAN IP also works if
+you only ever need notifications on your own Wi-Fi.
 
 ### 5. Test it
 
@@ -169,7 +201,7 @@ It skips the dedupe rules (deliberate sends always go through).
 | `[ntfy] setup incomplete: no ntfy server configured…` | Set `serverUrl` or `NTFY_SERVER_URL`. |
 | `publish … failed: HTTP 401/403` | Token missing/wrong — set `NTFY_TOKEN`, or allow anonymous publishing on the server. |
 | `publish … failed: HTTP 404` | `serverUrl` wrong or reverse-proxy path missing. |
-| Nothing on iOS while backgrounded | iOS needs ntfy Firebase/UP push — see iOS docs link above; foreground test first. |
+| Nothing on iOS while backgrounded | Set `upstream-base-url: "https://ntfy.sh"` on the server (iOS instant push requires it; verified working). Foreground test first. |
 | Notification never sent, no error | Check event isn't disabled or deduped — set `failureLogIntervalMs` logs are rate-limited by design. |
 | Repeated failures spam logs | First failure logs, repeats log at most every `failureLogIntervalMs` (default 10 min) per topic. |
 

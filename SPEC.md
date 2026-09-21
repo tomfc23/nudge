@@ -285,13 +285,13 @@ services:
 - Token: `ntfy token` → export `NTFY_TOKEN`.
 - Security: topic names are effectively passwords — use an unguessable `baseTopic` suffix. Enable server auth as defense in depth.
 
-### iOS delivery caveat (verify in step 0)
+### iOS delivery caveat (verify in step 0) — ✅ RESOLVED, verified 2026-09-21
 
-iOS background delivery relies on ntfy's push path (Firebase/APNS) or the app's connection/refresh behavior. **Before building the plugin**, verify a message sent while the iOS app is backgrounded is delivered promptly on the self-hosted instance. If it isn't, evaluate [UnifiedPush](https://docs.ntfy.sh/publish/#unifiedpush) or accept foreground/refresh-delivery timing. Do not build on top of an unverified delivery path.
+iOS background delivery for a self-hosted server **requires the server-side `upstream-base-url: "https://ntfy.sh"` setting** — ntfy's official mechanism (flag help: *"needed for iOS push notifications for self-hosted servers"*). Flow: each publish forwards a *poll request* — message ID + SHA256(topic URL) only, never the content — to ntfy.sh; ntfy.sh wakes the phone via Firebase/APNS; the app fetches the real message from the self-hosted server. Poll requests are deliberately not cached (`cache = false` when `X-Poll-ID` is set), so they are invisible to `?poll=1` by design. Verified end-to-end: notification delivered to a locked iPhone with the app fully backgrounded. UnifiedPush is Android-only and was not needed; no app rebuild required. Without `upstream-base-url`, delivery falls back to iOS background refresh — documented by ntfy as unreliable (hours).
 
 ## 11. Build order
 
-0. **Server + iOS smoke test**: docker compose up → token → iOS app subscribes to `opencode-test-xyz` → `curl -H "Authorization: Bearer $NTFY_TOKEN" -d "hello" http://server/opencode-test-xyz` → confirm delivery while app is backgrounded. Decide delivery strategy here if flaky.
+0. **Server + iOS smoke test**: docker compose up → token → iOS app subscribes to `opencode-test-xyz` → `curl -H "Authorization: Bearer $NTFY_TOKEN" -d "hello" http://server/opencode-test-xyz` → confirm delivery while app is backgrounded. Decide delivery strategy here if flaky. **✅ Done (2026-09-21): strategy = `upstream-base-url: https://ntfy.sh`, see §10 caveat + §13.**
 1. **Scaffold + publish client**: package, `Plugin.define`, config parsing, `publish.ts`. **Verify empirically whether `{env:NTFY_TOKEN}` arrives resolved or literal in `ctx.options`** (log a redacted marker in a throwaway run); confirm §5.1's dual-path resolution handles the observed behavior; update §5.1 with the finding. Standalone script proves publish works.
 2. **Finished + error notifications**: event watcher, dedupe, error cooldown (§6.3), config gating, failure logging (§7.1).
 3. **Question notifications**: permission `evaluate` hook, form watcher, idle classifier (§6.1), question-over-finished precedence (§6.2).
@@ -311,7 +311,7 @@ iOS background delivery relies on ntfy's push path (Firebase/APNS) or the app's 
    - [ ] `ntfy_notify` with defaults, with priority/tags, with topic override
    - [ ] `events.<name>.enabled: false` suppresses
    - [ ] Missing/invalid token → soft failure per §5.1, plugin still loads; failure logs at §7.1 cadence (first immediately, then ≤1/10min), recovery line on fix
-   - [ ] Delivery while iOS app backgrounded
+   - [x] Delivery while iOS app backgrounded (2026-09-21, via `upstream-base-url` → ntfy.sh → APNS)
    - [ ] Plugin unload → no dangling subscriptions/timers
 
 ## 12. Future work (out of scope for v1)
@@ -336,11 +336,14 @@ iOS background delivery relies on ntfy's push path (Firebase/APNS) or the app's 
 - **`{env:NAME}` token:** `token: "{env:SMOKE_TOK}"` + `SMOKE_TOK=abc123` → published `Authorization: Bearer abc123` (loader pre-resolution and the plugin's regex path are indistinguishable; §5.1 handles both).
 - **Publish path:** `scripts/smoke-publish.ts` against a local capture server received `POST /` with the expected topic, body, and auth header.
 - **Regression:** `npm test` (26 tests: classifier, config/token chain, event→publish flow, dedupe/cooldown, log rate-limit, tool) and `tsc --noEmit` both green after all changes.
+- **Real self-hosted server, production hardening:** ntfy 2.28.0 in Docker on Colima (macOS has no native server); auth enabled with `auth-file` + `auth-default-access: read-only` (anonymous may subscribe, publish denied 403 — verified) and an admin user + token for the plugin (publish 200 — verified). Note: config key is `auth-default-access`, *not* `auth-default-permissions` (the latter is silently ignored — koanf is not strict-parse).
+- **Public remote access:** Cloudflare Tunnel (dedicated tunnel `ntfy`, existing tunnels untouched) → `https://ntfy.example.com`, DNS routed, health 200 through the public URL; persisted via launchd `LaunchAgent` (RunAtLoad + KeepAlive) with `brew services start colima` + `restart: unless-stopped` covering reboot recovery.
+- **iOS background delivery (build-order step 0):** `upstream-base-url: "https://ntfy.sh"` → server log confirms poll request forwarded (matching SHA256 topic hash, no WARN = HTTP 200); notification received on a **locked iPhone with the app fully backgrounded**. See §10 caveat.
+- **Live `ntfy_notify` → phone (custom path e2e):** fired from a real session's tool catalog → server received authenticated publish → poll request forwarded → notification displayed on locked iPhone.
 
 ### Not verified (environment limits)
 
-- **Real ntfy server + iOS delivery** (build-order step 0) — Docker is not installed on this machine. Needs: docker compose up → token → iOS subscribe → `curl` publish → confirm backgrounded delivery.
-- **Live event → phone flow inside a running session** — would require model calls; event→publish logic is covered by tests with a fake fetch instead.
+- **Automatic triggers → phone inside a live session** (permission ask, idle classification, error cooldown) — would require model calls; the event→publish logic is covered by tests with a fake fetch, and the downstream publish→server→phone chain is verified live via `ntfy_notify` (same publish path).
 
 ### Deviations from rev 2
 
