@@ -3,6 +3,9 @@
  *  - per-event dedupe + question→finished suppression (§6.2)
  *  - per-session error cooldown (§6.3)
  *  - rate-limited failure logging + recovery lines (§7.1)
+ * Dedupe state is process-shared by default (see sharedState): OpenCode can
+ * load the plugin multiple times concurrently, and each copy must not
+ * re-publish the same event.
  * Failures are logged, never thrown into event loops.
  */
 
@@ -20,21 +23,58 @@ export interface NotifyInput {
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 
-interface ErrorState {
+export interface ErrorState {
   last: number
   suppressed: number
 }
 
-export class Notifier {
-  private readonly recent = new Map<string, number>()
-  private readonly lastQuestion = new Map<string, number>()
-  private readonly errorState = new Map<string, ErrorState>()
-  private readonly lastFailureLog = new Map<string, number>()
-  private readonly needsRecoveryLog = new Set<string>()
+/**
+ * Dedupe / cooldown / log-rate-limit state. OpenCode may load this plugin
+ * several times concurrently in one process (observed on v2.0.12: three
+ * `setup()` runs within ~1 ms per reload, all subscribed to the same event
+ * bus), so production wires ONE process-wide store via sharedState() —
+ * with instance-local maps every copy would publish the same event.
+ */
+export interface DedupeState {
+  recent: Map<string, number>
+  lastQuestion: Map<string, number>
+  errorState: Map<string, ErrorState>
+  lastFailureLog: Map<string, number>
+  needsRecoveryLog: Set<string>
+}
 
+/** Isolated store — the default for a single Notifier (and for tests). */
+export function freshState(): DedupeState {
+  return {
+    recent: new Map(),
+    lastQuestion: new Map(),
+    errorState: new Map(),
+    lastFailureLog: new Map(),
+    needsRecoveryLog: new Set(),
+  }
+}
+
+// Symbol.for → the same key even if this module gets evaluated once per
+// plugin load; globalThis ties every instance in the process to one store.
+// notify() checks-and-sets synchronously, so duplicate instances cannot race
+// past the dedupe window on the single-threaded event loop.
+const STATE_KEY = Symbol.for("opencode-ntfy.dedupe-state")
+
+/** One dedupe store per process, shared by every Notifier instance. */
+export function sharedState(): DedupeState {
+  const g = globalThis as unknown as Record<PropertyKey, unknown>
+  const existing = g[STATE_KEY] as DedupeState | undefined
+  if (existing) return existing
+  const state = freshState()
+  g[STATE_KEY] = state
+  return state
+}
+
+export class Notifier {
   constructor(
     private readonly config: Config,
     private readonly fetchImpl: FetchLike = (input, init) => fetch(input, init),
+    private readonly state: DedupeState = freshState(),
   ) {}
 
   /** Publish an event-kind notification (dedupe/cooldown applied). */
@@ -50,26 +90,26 @@ export class Notifier {
 
     if (kind === "error") {
       // §6.3: per-session cooldown; count suppressed errors for the next ping.
-      const state = this.errorState.get(sessionID)
-      if (state && now - state.last < cfg.error.cooldownMs) {
-        state.suppressed += 1
+      const err = this.state.errorState.get(sessionID)
+      if (err && now - err.last < cfg.error.cooldownMs) {
+        err.suppressed += 1
         return
       }
-      const suppressed = state?.suppressed ?? 0
-      this.errorState.set(sessionID, { last: now, suppressed: 0 })
+      const suppressed = err?.suppressed ?? 0
+      this.state.errorState.set(sessionID, { last: now, suppressed: 0 })
       if (suppressed > 0) message += ` (+${suppressed} similar errors suppressed)`
     } else if (kind !== "custom") {
       // §6.2 dedupe: (sessionID, kind) within the window…
       const key = `${sessionID}:${kind}`
-      const last = this.recent.get(key) ?? 0
+      const last = this.state.recent.get(key) ?? 0
       if (now - last < this.config.dedupeWindowMs) return
       // …and a fresh question suppresses a concurrent "finished".
       if (kind === "finished") {
-        const lastQ = this.lastQuestion.get(sessionID) ?? 0
+        const lastQ = this.state.lastQuestion.get(sessionID) ?? 0
         if (now - lastQ < this.config.dedupeWindowMs) return
       }
-      this.recent.set(key, now)
-      if (kind === "question") this.lastQuestion.set(sessionID, now)
+      this.state.recent.set(key, now)
+      if (kind === "question") this.state.lastQuestion.set(sessionID, now)
     }
 
     const topic = input.topic ?? this.topicFor(kind)
@@ -142,17 +182,17 @@ export class Notifier {
   private logFailure(key: string, statusClass: string, message: string): void {
     const logKey = `${key}:${statusClass}`
     const now = Date.now()
-    const last = this.lastFailureLog.get(logKey)
+    const last = this.state.lastFailureLog.get(logKey)
     if (last !== undefined && now - last < this.config.failureLogIntervalMs) return
-    this.lastFailureLog.set(logKey, now)
-    this.needsRecoveryLog.add(logKey)
+    this.state.lastFailureLog.set(logKey, now)
+    this.state.needsRecoveryLog.add(logKey)
     console.error(message)
   }
 
   private logRecovery(topic: string): void {
-    for (const logKey of [...this.needsRecoveryLog]) {
+    for (const logKey of [...this.state.needsRecoveryLog]) {
       if (logKey.startsWith(`${topic}:`)) {
-        this.needsRecoveryLog.delete(logKey)
+        this.state.needsRecoveryLog.delete(logKey)
         console.error(`ntfy: publishing recovered (topic=${topic})`)
       }
     }

@@ -8,7 +8,7 @@ import { detectAccess } from "../src/access"
 import { classify, excerpt, preprocess } from "../src/classify"
 import { readConfig, type StorageLike } from "../src/config"
 import { watchEvents, type EventsDeps } from "../src/events"
-import { Notifier, type FetchLike } from "../src/publish"
+import { Notifier, freshState, sharedState, type FetchLike } from "../src/publish"
 import { registerTool } from "../src/tool"
 
 let passed = 0
@@ -353,6 +353,63 @@ async function main() {
     const q = fetcher.sent.filter((s) => s.body.message === "Which database?")
     assert.equal(q.length, 1)
     assert.equal(q[0].body.topic, "opencode-test-question")
+  })
+
+  console.log("shared state across concurrently loaded plugin instances")
+  await test("sharedState() is a process-wide singleton", () => {
+    assert.equal(sharedState(), sharedState())
+  })
+  await test("default Notifier state stays instance-local (test isolation)", async () => {
+    const { config: cfg } = await readConfig({ serverUrl: "http://t", baseTopic: "bt" }, fakeStorage())
+    const f1 = fakeFetch()
+    const f2 = fakeFetch()
+    new Notifier(cfg!, f1 as FetchLike).notify("question", "iso", { title: "Q", message: "m" })
+    new Notifier(cfg!, f2 as FetchLike).notify("question", "iso", { title: "Q", message: "m" })
+    await flush()
+    assert.equal(f1.sent.length, 1)
+    assert.equal(f2.sent.length, 1, "instance-local state must not cross-suppress")
+  })
+  await test("3 instances sharing state publish one event once; finished suppressed cross-instance", async () => {
+    const { config: cfg } = await readConfig(
+      { serverUrl: "http://t", baseTopic: "bt", events: { error: { cooldownSec: 300 } } },
+      fakeStorage(),
+    )
+    const shared = freshState()
+    const f1 = fakeFetch()
+    const f2 = fakeFetch()
+    const f3 = fakeFetch()
+    const n1 = new Notifier(cfg!, f1 as FetchLike, shared)
+    const n2 = new Notifier(cfg!, f2 as FetchLike, shared)
+    const n3 = new Notifier(cfg!, f3 as FetchLike, shared)
+    // The same event observed by three concurrently loaded plugin copies…
+    const input = { title: "Question: Which database?", message: "postgres or sqlite?" }
+    n1.notify("question", "dup", input)
+    n2.notify("question", "dup", input)
+    n3.notify("question", "dup", input)
+    // …and a finished event from another copy right behind the question.
+    n2.notify("finished", "dup", { title: "Finished: x", message: "done" })
+    await flush()
+    assert.equal(f1.sent.length, 1, "first instance publishes")
+    assert.equal(f2.sent.length, 0, "second + third instances suppressed")
+    assert.equal(f3.sent.length, 0, "third instance suppressed")
+    assert.equal(f1.sent[0].body.topic, "bt-question")
+  })
+  await test("error cooldown counts across instances", async () => {
+    const { config: cfg } = await readConfig(
+      { serverUrl: "http://t", baseTopic: "bt", events: { error: { cooldownSec: 300 } } },
+      fakeStorage(),
+    )
+    const shared = freshState()
+    const f1 = fakeFetch()
+    const f2 = fakeFetch()
+    const n1 = new Notifier(cfg!, f1 as FetchLike, shared)
+    const n2 = new Notifier(cfg!, f2 as FetchLike, shared)
+    n1.notify("error", "co", { title: "E", message: "boom" })
+    n2.notify("error", "co", { title: "E", message: "boom" })
+    n2.notify("error", "co", { title: "E", message: "boom" })
+    await flush()
+    assert.equal(f1.sent.length, 1, "cooldown shared → one error published")
+    assert.equal(f2.sent.length, 0)
   })
 
   console.log("failure logging (§7.1)")

@@ -6,7 +6,7 @@
 import { Plugin } from "@opencode/plugin"
 import { readConfig } from "./config"
 import { watchEvents } from "./events"
-import { Notifier } from "./publish"
+import { Notifier, sharedState } from "./publish"
 import { registerTool } from "./tool"
 
 const log = (message: string) => console.error(`[ntfy] ${message}`)
@@ -21,7 +21,10 @@ export default Plugin.define({
 
     for (const line of info) log(line)
 
-    const notifier = new Notifier(config)
+    // Shared dedupe/cooldown state: OpenCode may run setup() several times
+    // concurrently in one process — instance-local maps would publish every
+    // event once per loaded copy (observed: 3 notifications per question).
+    const notifier = new Notifier(config, undefined, sharedState())
     const controller = new AbortController()
 
     // Fire the event watcher; it stops when the plugin unloads.
