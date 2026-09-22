@@ -706,6 +706,18 @@ async function main() {
     assert.ok([3, 4].includes(cf.status!), `expected scored failure, got ${cf.status}`)
   })
 
+  await test("cloudflare mode re-points a stale DNS route (530 regression guard)", () => {
+    // uninstall.sh deletes the tunnel but keeps the DNS route, so the record can
+    // still aim at a dead tunnel. `route dns` without -f fails on an existing
+    // record, and swallowing that failure leaves the hostname on Cloudflare 530
+    // (error 1033) and the phone unable to subscribe.
+    const src = readFileSync(sh, "utf8")
+    const route = src.match(/"\$CF" tunnel route dns[^\n]*/)
+    assert.ok(route, "cloudflared route dns call present")
+    assert.match(route![0], /tunnel route dns -f ntfy/, "route dns must overwrite the existing record")
+    assert.doesNotMatch(src, /already exists — ok/, "a failed route must not be swallowed")
+  })
+
   await test("occupied NTFY_PORT → exit 4 with owner, before any file writes", async () => {
     // A held port must be reported as a conflict. If docker prerequisites are
     // missing, the script must fail earlier with 3 instead (and change nothing).

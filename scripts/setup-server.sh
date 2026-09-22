@@ -405,8 +405,12 @@ ingress:
     service: http://localhost:$NTFY_PORT
   - service: http_status:404
 EOF
-    "$CF" tunnel route dns ntfy "$CF_HOSTNAME" 2>/dev/null \
-      || info "(DNS record for $CF_HOSTNAME already exists — ok)"
+    # -f overwrites an existing record on purpose. uninstall.sh deletes the
+    # tunnel but keeps the DNS route, so a reinstall MUST re-point the hostname
+    # at the new tunnel UUID — tolerating a failed route leaves it aimed at the
+    # deleted tunnel, which Cloudflare answers with 530 (error 1033) forever.
+    "$CF" tunnel route dns -f ntfy "$CF_HOSTNAME" >/dev/null 2>&1 \
+      || die 5 "could not route $CF_HOSTNAME to tunnel 'ntfy'"
     BASE_URL="https://$CF_HOSTNAME"
     # Persistence: launchd on macOS (idempotent — skip if an existing agent
     # already runs this tunnel, e.g. a hand-installed LaunchAgent).
