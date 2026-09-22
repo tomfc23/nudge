@@ -286,11 +286,11 @@ cat <<EOF
      ["/path/to/opencode-ntfy", { "serverUrl": "$BASE_URL", "token": "$TOKEN" }]
    ]
 
-2) Start OpenCode once — the [ntfy] startup log prints your four topics
-   (…-question / …-finished / …-error / …-custom).
+2) Start OpenCode once — the [ntfy] startup log prints your one topic
+   (every event kind arrives on this single topic).
 
 3) On your phone: install the ntfy app → default server = $BASE_URL
-   → subscribe to the four topics. $( [ "$MODE" = "local" ] && echo "Phone must be on this Wi-Fi." )$( [ "$MODE" = "tailscale" ] && echo "Phone needs the Tailscale app (enable Settings → Tailscale → Connect on Demand)." )
+   → subscribe to that one topic. $( [ "$MODE" = "local" ] && echo "Phone must be on this Wi-Fi." )$( [ "$MODE" = "tailscale" ] && echo "Phone needs the Tailscale app (enable Settings → Tailscale → Connect on Demand)." )
 
    iOS instant push is pre-configured (upstream-base-url → ntfy.sh → APNS).
 

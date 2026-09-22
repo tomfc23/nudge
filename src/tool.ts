@@ -66,7 +66,7 @@ export async function registerTool(ctx: ToolDeps, notifier: Notifier, config: Co
           },
           topic: {
             type: "string",
-            description: "Optional topic override; defaults to the plugin's custom topic",
+            description: "Optional topic override; defaults to the plugin's topic",
           },
         },
         required: ["message"],
@@ -94,7 +94,7 @@ export async function registerTool(ctx: ToolDeps, notifier: Notifier, config: Co
             ...(input.tags ? { tags: input.tags } : {}),
             ...(input.topic ? { topic: input.topic } : {}),
           })
-          return { content: `Notification sent to topic "${input.topic ?? config.topics.custom}".` }
+          return { content: `Notification sent to topic "${input.topic ?? config.topic}".` }
         } catch (error) {
           return { content: `Failed to send notification: ${(error as Error)?.message ?? error}` }
         }

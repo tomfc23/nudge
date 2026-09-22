@@ -46,8 +46,8 @@ it in every project):
 }
 ```
 
-`serverUrl` (or `NTFY_SERVER_URL`) is the **only** required setting — topics are generated and
-persisted automatically on first run.
+`serverUrl` (or `NTFY_SERVER_URL`) is the **only** required setting — a single topic is
+generated and persisted automatically on first run.
 
 > **No config entry needed?** Drop a one-line file into a plugins directory and configure via
 > environment variables instead:
@@ -72,11 +72,13 @@ persisted automatically on first run.
 
 ```
 [ntfy] server: http://your-server-ip
-[ntfy] subscribe in your ntfy app → server http://your-server-ip , topics: question=opencode-1a2b3c4d5e-question finished=opencode-1a2b3c4d5e-finished error=opencode-1a2b3c4d5e-error custom=opencode-1a2b3c4d5e-custom
+[ntfy] subscribe in your ntfy app → server http://your-server-ip , topic: opencode-1a2b3c4d5e
 ```
 
-4. Subscribe to those four topics in the app (topic = the random-looking name; anyone who knows
-   it can read it, which is why it has an unguessable suffix).
+4. Subscribe to that one topic in the app (the topic = the random-looking name; anyone who
+   knows it can read it, which is why it has an unguessable suffix). Every event kind —
+   question, finished, error, custom — arrives on this single topic, distinguished by the
+   title prefix, emoji tag, and priority.
 
 > **iOS background delivery:** set `upstream-base-url: "https://ntfy.sh"` on your ntfy server
 > (see next section). Your server then forwards a tiny wake-up signal (message ID only — never
@@ -173,12 +175,15 @@ explicitly in the options.
 
 ## What you get
 
-| Event | Trigger | Default topic | Default priority |
-|---|---|---|---|
-| **Question** | Permission request, form, or the agent ends its turn asking you something (`?` or "should I…" phrasing) | `…-question` | urgent (5) |
-| **Finished** | Turn completes without a question | `…-finished` | default (3) |
-| **Error** | Session/tool execution error (60 s cooldown per session) | `…-error` | high (4) |
-| **Custom** | Agent calls `ntfy_notify` | `…-custom` | as requested |
+| Event | Trigger | Default priority |
+|---|---|---|
+| **Question** | Permission request, form, or the agent ends its turn asking you something (`?` or "should I…" phrasing) | urgent (5) |
+| **Finished** | Turn completes without a question | default (3) |
+| **Error** | Session/tool execution error (60 s cooldown per session) | high (4) |
+| **Custom** | Agent calls `ntfy_notify` | as requested |
+
+All events arrive on your one subscribed topic — the title prefix and emoji tag
+(❓/✅/🚨) tell you which kind it is.
 
 Dedupe: a question suppresses a “finished” within 10 s (so you never get two pings for one
 moment), never the other way around.
@@ -204,7 +209,6 @@ All keys are optional — defaults shown:
           "finished": { "enabled": true, "priority": "default", "tags": ["heavy_check_mark"] },
           "error":    { "enabled": true, "priority": "high", "tags": ["rotating_light"], "cooldownSec": 60 }
         },
-        "topics": { "question": "custom-topic-name" },
 
         "dedupeWindowMs": 10000,
         "publishTimeoutMs": 5000,
@@ -219,8 +223,8 @@ All keys are optional — defaults shown:
   Unset → plugin stays quiet and logs how to fix it.
 - **`token`** – literal, `{env:NAME}`, or `NTFY_TOKEN` env. No token → anonymous publishing
   (fine for auth-disabled servers).
-- **`baseTopic`** – auto-generated once and persisted on first run if unset; the four topics
-  are `{base}-question|finished|error|custom`.
+- **`baseTopic`** – the one topic every event publishes to; auto-generated once and
+  persisted on first run if unset. Your phone subscribes to it exactly once.
 - **`accessMode`** – `"auto"` (default) detects local/tailscale/cloudflare from `serverUrl`
   for startup guidance; set explicitly when the publishing URL differs from the phone's URL.
 - **`events.*.priority`** – `min|low|default|high|urgent` or `1`–`5`.
@@ -228,7 +232,6 @@ All keys are optional — defaults shown:
   - `"heuristic"` (default): trailing `?` or a question phrase anywhere → question.
   - `"always"`: every turn-end is a question ping. `"off"`: never.
 - **`events.question.patterns`** – replaces the built-in phrase list (case-insensitive regexes).
-- **`topics.*`** – override individual topic names.
 
 ## The `ntfy_notify` tool
 
@@ -248,14 +251,14 @@ It skips the dedupe rules (deliberate sends always go through).
 | `publish … failed: HTTP 404` | `serverUrl` wrong or reverse-proxy path missing. |
 | Nothing on iOS while backgrounded | Set `upstream-base-url: "https://ntfy.sh"` on the server (iOS instant push requires it; verified working). Foreground test first. |
 | Notification never sent, no error | Check event isn't disabled or deduped — set `failureLogIntervalMs` logs are rate-limited by design. |
-| Repeated failures spam logs | First failure logs, repeats log at most every `failureLogIntervalMs` (default 10 min) per topic. |
+| Repeated failures spam logs | First failure logs, repeats log at most every `failureLogIntervalMs` (default 10 min) per topic+class. |
 
 ## Development
 
 ```bash
 npm install
 npm run typecheck
-npm test          # 26 tests: classifier, config/token chain, end-to-end event→publish flow
+npm test          # 39 tests: classifier, config/token chain, access modes, end-to-end event→publish flow, dedupe/sharing, tool
 ```
 
 Design rationale and decision log: [SPEC.md](./SPEC.md).

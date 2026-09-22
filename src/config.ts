@@ -6,7 +6,11 @@
  *   - No token at all is fine (auth-disabled self-hosted servers are common);
  *     a 401/403 from the server produces actionable guidance instead.
  *   - baseTopic is auto-generated once and persisted, so a zero-config user
- *     only has to read the topic names from the startup log once.
+ *     only has to read the one topic name from the startup log once.
+ *   - Single topic (SPEC.md §13-D9): ALL events publish to baseTopic; the
+ *     event kind travels in the title/priority/tags. The phone subscribes to
+ *     exactly one topic — the minimum the ntfy iOS app allows (no wildcards,
+ *     no one-tap links on iOS), so setup is one server URL + one topic.
  */
 
 import type { PluginOptions } from "@opencode/plugin"
@@ -39,7 +43,8 @@ export interface ErrorCfg extends EventCfg {
 export interface Config {
   serverUrl: string
   token?: string
-  topics: { question: string; finished: string; error: string; custom: string }
+  /** The one topic every event kind publishes to (SPEC.md §13-D9). */
+  topic: string
   events: { question: QuestionCfg; finished: EventCfg; error: ErrorCfg }
   dedupeWindowMs: number
   publishTimeoutMs: number
@@ -128,7 +133,7 @@ export async function readConfig(options: PluginOptions, storage: StorageLike): 
     return { problems, info }
   }
 
-  // --- topic names (auto-generated once, persisted so the phone can subscribe) ---
+  // --- topic name (auto-generated once, persisted so the phone can subscribe) ---
   let baseTopic =
     (typeof options.baseTopic === "string" && options.baseTopic) ||
     process.env.NTFY_BASE_TOPIC ||
@@ -146,9 +151,6 @@ export async function readConfig(options: PluginOptions, storage: StorageLike): 
   }
   baseTopic = sanitizeTopic(baseTopic)
 
-  const topicOverrides = obj(options.topics)
-  const topic = (key: string) => sanitizeTopic(typeof topicOverrides[key] === "string" && topicOverrides[key] ? topicOverrides[key] : `${baseTopic}-${key}`)
-
   const ev = obj(options.events)
   const evQuestion = obj(ev.question)
   const evFinished = obj(ev.finished)
@@ -164,12 +166,7 @@ export async function readConfig(options: PluginOptions, storage: StorageLike): 
   const config: Config = {
     serverUrl,
     token: resolveToken(options.token),
-    topics: {
-      question: topic("question"),
-      finished: topic("finished"),
-      error: topic("error"),
-      custom: topic("custom"),
-    },
+    topic: baseTopic,
     events: {
       question: {
         enabled: bool(evQuestion.enabled, true),
@@ -207,11 +204,7 @@ export async function readConfig(options: PluginOptions, storage: StorageLike): 
       ? "auth: access token configured"
       : "auth: none configured (fine if your server allows anonymous publishing)",
   )
-  info.push(
-    `subscribe in your ntfy app → server ${serverUrl} , topics: ` +
-      `question=${config.topics.question} finished=${config.topics.finished} ` +
-      `error=${config.topics.error} custom=${config.topics.custom}`,
-  )
+  info.push(`subscribe in your ntfy app → server ${serverUrl} , topic: ${config.topic}`)
 
   return { config, problems, info }
 }

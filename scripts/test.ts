@@ -212,10 +212,10 @@ async function main() {
   await test("baseTopic auto-generated once and persisted", async () => {
     const storage = fakeStorage()
     const first = await readConfig({ serverUrl: "http://t" }, storage)
-    const generated = first.config!.topics.question.replace(/-question$/, "")
+    const generated = first.config!.topic
     assert.match(generated, /^opencode-[a-f0-9]{10}$/)
     const second = await readConfig({ serverUrl: "http://t" }, storage)
-    assert.equal(second.config!.topics.question, `${generated}-question`)
+    assert.equal(second.config!.topic, generated)
     assert.equal(storage.map.get("baseTopic"), generated)
   })
   await test("event defaults and overrides", async () => {
@@ -232,11 +232,11 @@ async function main() {
     assert.equal(ev.question.priority, 4)
     assert.equal(ev.finished.priority, 3)
     assert.equal(ev.error.cooldownMs, 5000)
-    assert.equal(res.config!.topics.custom, "bt-custom")
+    assert.equal(res.config!.topic, "bt")
   })
-  await test("startup info lists subscribe topics", async () => {
+  await test("startup info lists the subscribe topic", async () => {
     const res = await readConfig({ serverUrl: "http://t", baseTopic: "bt" }, fakeStorage())
-    assert.ok(res.info.some((l) => l.includes("bt-question")))
+    assert.ok(res.info.some((l) => l.includes("topic: bt")))
   })
 
   console.log("access modes (local / tailscale / cloudflare)")
@@ -297,10 +297,10 @@ async function main() {
   const { fetcher, config, notifier } = await runMainFlow()
   const byKind = (titlePrefix: string) => fetcher.sent.filter((s) => s.body.title?.startsWith(titlePrefix))
 
-  await test("permission.asked → question publish (urgent, right topic, bearer auth)", () => {
+  await test("permission.asked → question publish (urgent, single topic, bearer auth)", () => {
     const q = byKind("Permission needed:")
     assert.equal(q.length, 1)
-    assert.equal(q[0].body.topic, "opencode-test-question")
+    assert.equal(q[0].body.topic, "opencode-test")
     assert.equal(q[0].body.priority, 5)
     assert.match(q[0].body.message, /shell.*npm test/)
     assert.equal((q[0].headers as any).Authorization, undefined)
@@ -311,7 +311,7 @@ async function main() {
   await test("plain completion → finished publish (default priority)", () => {
     const f = byKind("Finished: Add dark mode")
     assert.equal(f.length, 1)
-    assert.equal(f[0].body.topic, "opencode-test-finished")
+    assert.equal(f[0].body.topic, "opencode-test")
     assert.equal(f[0].body.priority, 3)
     assert.match(f[0].body.message, /dark mode shipped/)
   })
@@ -328,7 +328,7 @@ async function main() {
   await test("failed turn → error publish, no finished", () => {
     const e = byKind("Error: Risky task")
     assert.equal(e.length, 1)
-    assert.equal(e[0].body.topic, "opencode-test-error")
+    assert.equal(e[0].body.topic, "opencode-test")
     assert.equal(e[0].body.priority, 4)
     assert.match(e[0].body.message, /Model overloaded/)
     assert.equal(byKind("Finished: Risky task").length, 0)
@@ -352,7 +352,7 @@ async function main() {
   await test("form.created → question with form title", () => {
     const q = fetcher.sent.filter((s) => s.body.message === "Which database?")
     assert.equal(q.length, 1)
-    assert.equal(q[0].body.topic, "opencode-test-question")
+    assert.equal(q[0].body.topic, "opencode-test")
   })
 
   console.log("shared state across concurrently loaded plugin instances")
@@ -392,7 +392,7 @@ async function main() {
     assert.equal(f1.sent.length, 1, "first instance publishes")
     assert.equal(f2.sent.length, 0, "second + third instances suppressed")
     assert.equal(f3.sent.length, 0, "third instance suppressed")
-    assert.equal(f1.sent[0].body.topic, "bt-question")
+    assert.equal(f1.sent[0].body.topic, "bt")
   })
   await test("error cooldown counts across instances", async () => {
     const { config: cfg } = await readConfig(
@@ -430,7 +430,7 @@ async function main() {
     const failuresLogged = lines.filter((l) => l.includes("HTTP 401"))
     assert.equal(failuresLogged.length, 1, `expected 1 failure log, got: ${JSON.stringify(lines)}`)
     assert.ok(failuresLogged[0].includes("check token"), "should include actionable hint")
-    // Recover: same topic as the earlier failure (bt-question) now succeeds.
+    // Recover: same topic as the earlier failure ("bt") now succeeds.
     fetcher.mode = "ok"
     const recovery = await captureLogs(async () => {
       notifier.notify("question", "s2", { title: "D", message: "m" })
@@ -438,21 +438,21 @@ async function main() {
     })
     assert.equal(recovery.filter((l) => l.includes("recovered")).length, 1)
   })
-  await test("transport failures rate-limited per (topic, class)", async () => {
+  await test("transport failures rate-limited to one line per (topic, class)", async () => {
     const { config: cfg } = await readConfig({ serverUrl: "http://t", baseTopic: "bt" }, fakeStorage())
     const fetcher = fakeFetch()
     fetcher.mode = "throw"
     const notifier = new Notifier(cfg!, fetcher as FetchLike)
     const lines = await captureLogs(async () => {
-      // Two failures on the SAME topic (question) → rate-limited to 1 line…
+      // All kinds share the one topic, so every transport failure lands in the
+      // same (topic, class) bucket → rate-limited to a single line.
       notifier.notify("question", "s1", { title: "A", message: "m" })
       notifier.notify("question", "s2", { title: "B", message: "m" })
-      // …while a different topic logs its own first failure.
       notifier.notify("error", "s3", { title: "C", message: "m" })
       await flush()
     })
     const eLines = lines.filter((l) => l.includes("ECONNREFUSED"))
-    assert.equal(eLines.length, 2, `expected 2 (one per topic), got: ${JSON.stringify(lines)}`)
+    assert.equal(eLines.length, 1, `expected 1 (single topic + class), got: ${JSON.stringify(lines)}`)
   })
 
   console.log("ntfy_notify tool")
@@ -483,7 +483,7 @@ async function main() {
     await flush()
     assert.match(ok.content, /Notification sent/)
     assert.equal(fetcher.sent.length, 1)
-    assert.equal(fetcher.sent[0].body.topic, "bt-custom")
+    assert.equal(fetcher.sent[0].body.topic, "bt")
     assert.equal(fetcher.sent[0].body.priority, 5)
     assert.deepEqual(fetcher.sent[0].body.tags, ["tada"])
 

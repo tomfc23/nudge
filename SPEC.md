@@ -19,7 +19,7 @@ Key references:
 
 | Topic | Decision |
 | --- | --- |
-| Routing | **Per-event topics** (e.g. `opencode-question-<suffix>`) |
+| Routing | **Single topic** — every event publishes to `baseTopic`; kind carried by title/priority/tags (§13-D9) |
 | Default events | Question (permission ask + forms + plain text questions), task finished, errors |
 | Configurability | Per-event `enabled` / `priority` / `tags` map |
 | Custom notifications | **Agent tool** (`ntfy_notify`) only; no slash command, no RPC in v1 |
@@ -38,7 +38,7 @@ OpenCode server
        └─ ntfy_notify tool (ctx.tool.transform)    → custom notifications
             └─ publish.ts (fetch, JSON POST, bearer auth)
                  └─ self-hosted ntfy server (HTTP)
-                      └─ ntfy iOS app (subscribed to per-event topics)
+                      └─ ntfy iOS app (subscribed to the single topic)
 ```
 
 The plugin only **publishes**. All rendering, sound, and delivery to the phone is handled by the ntfy server + iOS app.
@@ -52,14 +52,14 @@ opencode-ntfy/
   package.json            # name: opencode-ntfy, type: module, main/exports: ./index.ts
   src/
     index.ts              # Plugin.define({ id: "ntfy", setup }) + cleanup
-    config.ts             # options parsing, defaults, derived topics, token resolution
+    config.ts             # options parsing, defaults, single derived topic, token resolution
     publish.ts            # ntfy HTTP client (fetch, JSON publish, bearer auth, timeout)
     events.ts             # event-stream watcher: permission/form/question, finished/error, dedupe/cooldown
     classify.ts           # idle classification: question vs finished (heuristic, §6.1)
     tool.ts               # ntfy_notify tool registration
   README.md
   SPEC.md                 # this document
-  scripts/test.ts         # 26-test suite (npm test via tsx)
+  scripts/test.ts         # 39-test suite (npm test via tsx)
 ```
 
 Local alternative: one-line drop-in at `.opencode/plugins/ntfy.ts` (or `~/.config/opencode/plugins/ntfy.ts`):
@@ -76,10 +76,7 @@ Passed as plugin options in `opencode.json(c)` (verified form, §13-D4):
   "plugins": [{ "package": "/abs/path/opencode-ntfy", "options": {
     "serverUrl": "https://ntfy.example.com",
     "token": "{env:NTFY_TOKEN}",
-    "baseTopic": "opencode-a8f3k2",       // unguessable suffix; topic = password
-    "topics": {                            // optional per-event overrides
-      "question": "...", "finished": "...", "error": "...", "custom": "..."
-    },
+    "baseTopic": "opencode-a8f3k2",       // THE one topic for all events; unguessable = password
     "events": {
       "question": {
         "enabled": true,
@@ -101,7 +98,7 @@ Passed as plugin options in `opencode.json(c)` (verified form, §13-D4):
 
 Rules:
 
-- Topics default to `${baseTopic}-question`, `${baseTopic}-finished`, `${baseTopic}-error`, `${baseTopic}-custom` when not overridden.
+- All events publish to the single topic `${baseTopic}` (§13-D9); the event kind travels in title/priority/tags. `ntfy_notify` may override per call via its `topic` input.
 - Unknown/missing options fail soft: log a warning, disable the affected event, never crash plugin setup.
 - Per-event `priority` accepts ntfy names (`min|low|default|high|urgent`) or IDs 1–5.
 
@@ -119,15 +116,15 @@ If the result is empty: log one clear warning (`"ntfy: no token available; publi
 
 ## 6. Notification events
 
-| Event | Topic suffix | Default priority | Detection |
-| --- | --- | --- | --- |
-| Question — permission ask | `-question` | `urgent` | `ctx.permission.hook("evaluate")`, publish when resulting `effect === "ask"`; payload includes action + resources |
-| Question — form pending | `-question` | `urgent` | Pending-form events on the event stream |
-| Question — plain text (agent waiting on user) | `-question` | `high` | Turn ends in idle **and** §6.1 classifies the final assistant message as a question |
-| Task finished | `-finished` | `default` | Turn ends in idle **and** §6.1 classifies it as not-a-question |
-| Error | `-error` | `high` | Assistant/tool error states and structured session errors on the event stream |
+| Event | Default priority | Detection |
+| --- | --- | --- |
+| Question — permission ask | `urgent` | `ctx.permission.hook("evaluate")`, publish when resulting `effect === "ask"`; payload includes action + resources |
+| Question — form pending | `urgent` | Pending-form events on the event stream |
+| Question — plain text (agent waiting on user) | `high` | Turn ends in idle **and** §6.1 classifies the final assistant message as a question |
+| Task finished | `default` | Turn ends in idle **and** §6.1 classifies it as not-a-question |
+| Error | `high` | Assistant/tool error states and structured session errors on the event stream |
 
-All events honor `events.<name>.enabled: false` to suppress.
+All events publish to the one `baseTopic` (§13-D9); kind defaults tags are `question` / `heavy_check_mark` / `rotating_light`. All events honor `events.<name>.enabled: false` to suppress.
 
 ### 6.1 Idle classification: question vs finished (primary gap resolution)
 
@@ -212,7 +209,7 @@ fetch(serverUrl + "/", {
 
 Replaces the previous ambiguous "one warning log per event type per run":
 
-- **Log key:** `(topicSuffix, statusClass)` where `statusClass` is `auth` (401/403), `client` (other 4xx), or `transport` (5xx / timeout / network).
+- **Log key:** `(topic, statusClass)` where `statusClass` is `auth` (401/403), `client` (other 4xx), or `transport` (5xx / timeout / network). With the single-topic scheme (§13-D9) the topic component is constant, so this effectively groups by `statusClass`: an outage logs one line per class instead of one per event kind.
 - **Rule:** log the **first** failure for a key immediately; thereafter log at most **once per `failureLogIntervalMs` (default 600 000 ms = 10 minutes)** per key. The interval is **wall-clock, evaluated at failure time**, and applies across sessions — not per-session, not per plugin-process-lifetime, not reset by unrelated successes.
 - **Recovery log:** on the first successful publish after any failure was logged for that key, emit one `info`: `ntfy: publishing recovered (topic=…)`.
 - Consequence: a persistent auth failure in a long-running server logs ~6 warnings/hour plus one recovery line when fixed — never fully silent, never spammy. A 10-minute interval still catches the "token rotated, still broken 3 hours later" case because each new interval logs again.
@@ -232,7 +229,7 @@ Registered via `ctx.tool.transform`:
     "title":    { "type": "string" },
     "priority": { "type": "string", "enum": ["min","low","default","high","urgent"] },
     "tags":     { "type": "array", "items": { "type": "string" } },
-    "topic":    { "type": "string" }   // optional override; defaults to -custom topic
+    "topic":    { "type": "string" }   // optional override; defaults to the single plugin topic
   },
   "required": ["message"],
   "additionalProperties": false
@@ -299,14 +296,14 @@ iOS background delivery for a self-hosted server **requires the server-side `ups
 5. **README**: server setup, token creation, iOS subscribe steps, config reference (incl. `idleMode`/`patterns`), security notes, future work.
 6. **Test matrix** (manual):
 
-   - [ ] Permission ask → `-question` (urgent), single notification
-   - [ ] Idle ending in "…should I squash these commits?" → `-question`
-   - [ ] Idle ending in "All tests pass." → `-finished`
-   - [ ] Idle with `?` mid-message only, no trailing `?` → `-finished` (trailing rule)
+   - [ ] Permission ask → question kind (urgent), single notification
+   - [ ] Idle ending in "…should I squash these commits?" → question
+   - [ ] Idle ending in "All tests pass." → finished
+   - [ ] Idle with `?` mid-message only, no trailing `?` → finished (trailing rule)
    - [ ] `idleMode: "always"` / `"off"` / custom `patterns` behave as specified
    - [ ] Answer permission ask, turn ends within 10s → question only, no `finished`
    - [ ] `finished` >10s after last question → fires normally (reverse case un-suppressed)
-   - [ ] Form prompt → `-question`
+   - [ ] Form prompt → question
    - [ ] Flapping tool errors ≤1 ping/60s/session, `(+N suppressed)` on re-fire
    - [ ] `ntfy_notify` with defaults, with priority/tags, with topic override
    - [ ] `events.<name>.enabled: false` suppresses
@@ -328,7 +325,7 @@ iOS background delivery for a self-hosted server **requires the server-side `ups
 
 ### Verified
 
-- **Plugin loads in a real server:** `opencode serve` in a test project with our package in config → `/api/plugin` reports `id: "ntfy"`, `source.type: "local"`, `state.status: "active"`, and the `[ntfy]` startup lines (server / auth / subscribe topics) print.
+- **Plugin loads in a real server:** `opencode serve` in a test project with our package in config → `/api/plugin` reports `id: "ntfy"`, `source.type: "local"`, `state.status: "active"`, and the `[ntfy]` startup lines (server / auth / subscribe topic) print.
 - **Config forms (both load a local package dir with options):**
   - `"plugins": [{ "package": "/abs/path", "options": {…} }]` — docs form
   - `"plugin": [["/abs/path" or "./rel/path", {…}]]` — tuple form from the published config schema
@@ -340,6 +337,7 @@ iOS background delivery for a self-hosted server **requires the server-side `ups
 - **Public remote access:** Cloudflare Tunnel (dedicated tunnel `ntfy`, existing tunnels untouched) → `https://ntfy.example.com`, DNS routed, health 200 through the public URL; persisted via launchd `LaunchAgent` (RunAtLoad + KeepAlive) with `brew services start colima` + `restart: unless-stopped` covering reboot recovery.
 - **iOS background delivery (build-order step 0):** `upstream-base-url: "https://ntfy.sh"` → server log confirms poll request forwarded (matching SHA256 topic hash, no WARN = HTTP 200); notification received on a **locked iPhone with the app fully backgrounded**. See §10 caveat.
 - **Live `ntfy_notify` → phone (custom path e2e):** fired from a real session's tool catalog → server received authenticated publish → poll request forwarded → notification displayed on locked iPhone.
+- **Single-topic scheme (D9):** all kinds publish to `baseTopic`; startup log prints one subscribe line; `tsc --noEmit` + 39/39 tests green after the change. Live exactly-once verification against the local-mode server with a one-topic phone subscription: pending (next step).
 - **Access-mode support — all three modes (D7):** mode detection covered by tests (loopback, RFC1918, `*.ts.net`, CGNAT `100.64–127`, public https/http, trycloudflare, unparseable, override). `scripts/setup-server.sh` executed end-to-end: **local** fresh run (LAN IP auto-detect, auth smoke: anon 403 / token 200 / via-LAN 200) and idempotent re-run (user + same token reused); **cloudflare** run against the real deployment (existing tunnel reused, public URL publish → 200 through the actual tunnel into a scratch instance, existing LaunchAgent correctly not duplicated). Production container restored and healthy (localhost + public) after all tests. Debug traps found & fixed: `set -o pipefail` + `grep -q` SIGPIPE poisoning, ntfy CLI stream ambiguity (`2>&1` everywhere), blocking `tailscale serve --bg` (bounded with `run_with_timeout`).
 - **Tailscale (all three branches exercised):** the script's tailscale mode ran end-to-end against a real logged-in tailnet: CLI detection, MagicDNS name extraction (`status --json` → python3), `base-url` derivation, and graceful handling of pending Serve activation (the blocking `serve --bg` is bounded by `run_with_timeout` — the printed activation link is surfaced with re-run guidance, then the script continues: auth smoke passed, `000` via the not-yet-proxied ts.net URL reported as a non-fatal warning, exit 0). Serve activation itself was deliberately **not** performed on the maintainer's machine — Cloudflare is the active mode there; fresh users are walked through the one-time `login.tailscale.com/f/serve` approval by the script's output.
 - **Duplicate notifications from concurrent plugin instances (D8, bug found in live use):** a single question produced **3 identical notifications** on the phone. Evidence chain: ntfy cache DB showed identical rows published in the **same millisecond** (also for `permission.asked` and `session.tool.failed` — even the 60s error cooldown was beaten); config had exactly one plugin entry (no ancestor/project configs); the service log showed the plugin loading in **bursts of 3 `setup()` runs within ~1 ms**, all on the shared event bus of one process (`role=server`), ~100 loads over the session. Instance-local dedupe maps meant each copy treated the same event as "first seen". Fixed by process-shared state (D8): `sharedState()` on `globalThis` via `Symbol.for` key, synchronous check-and-set on the single-threaded event loop. Tool path was never affected (tool registration is last-wins — one handler). New tests cover singleton state, instance-local default (test isolation), 3-instance single-publish + cross-instance question→finished suppression, and cross-instance error cooldown: 35 → 39 tests.
@@ -353,11 +351,12 @@ iOS background delivery for a self-hosted server **requires the server-side `ups
 - **D1 — events, not a permission hook.** Question triggers are `permission.asked` (fires exactly when the request is published) and `form.created`, plus the idle classifier; `questions.ts` was folded into `events.ts`.
 - **D2 — missing token publishes unauthenticated** (supersedes A6/B5): zero-config bias; a `401/403` response logs an actionable hint (set `NTFY_TOKEN` or allow anonymous publishing) instead of silently disabling.
 - **D3 — idle fallback clarified:** a question-classified idle with `events.question` disabled falls back to a finished ping; a finished-classified idle with finished disabled sends nothing.
-- **D4 — zero-config topics:** `baseTopic` is auto-generated (`opencode-<10hex>`) and persisted in `ctx.storage` on first run when unset; the startup log prints all four subscribe topics.
+- **D4 — zero-config topics:** `baseTopic` is auto-generated (`opencode-<10hex>`) and persisted in `ctx.storage` on first run when unset; the startup log prints the subscribe topic (single topic per D9).
 - **D5 — root `index.ts` required:** the local-plugin loader probes the package root and ignores `package.json` `main`/`exports` pointing into `src/`; without a root `index.ts` the entry is skipped *silently* (no error, no log). Ship `index.ts` re-exporting `src/index.ts`.
 - **D6 — npm name collision:** `opencode-ntfy` already exists on npm (stephanvs, v0.1.3 — a different plugin). Local-path installs are unaffected; README warns against `opencode plugin add opencode-ntfy`. Decide on a rename/scope before ever publishing.
 - **D7 — three access modes + setup script (post-v1 enhancement).** `src/access.ts` auto-detects local / tailscale / cloudflare from `serverUrl` and prints per-mode startup guidance (`access mode:` / `hint:` / `warning:` lines); an explicit `accessMode` option overrides detection (invalid values fall back to auto). `scripts/setup-server.sh` provisions a server in any mode — idempotent, sets `base-url` to the phone-facing URL (required for the iOS wake hash), and handles mode extras (`tailscale serve` / cloudflared tunnel + DNS + launchd). Tests: 26 → 35.
 - **D8 — process-shared dedupe state (bug fix).** OpenCode can run `setup()` several times concurrently in one process on the shared event bus (observed: 3 copies within ~1 ms). Dedupe/cooldown/log-rate-limit state therefore lives in a `globalThis` store keyed by `Symbol.for("opencode-ntfy.dedupe-state")` and is shared by every `Notifier` via `sharedState()`; `new Notifier(config)` without an explicit state stays instance-local (tests, embedding). Rationale: the first instance to check-and-set wins on the single-threaded event loop, so duplicate copies suppress each other — this also fixed cross-instance question→finished suppression and error-cooldown counting, which were equally broken. Tests: 35 → 39.
+- **D9 — single topic for everything (before first publish).** All four event kinds publish to `baseTopic` itself; the `-question|-finished|-error|-custom` suffixes and the per-kind `topics` override map are removed (the `ntfy_notify` per-call `topic` input stays as a power-user escape hatch). The kind travels in title/priority/tags (default tags: `question` / `heavy_check_mark` / `rotating_light`). Rationale: the ntfy iOS app has no wildcard subscriptions and no one-tap subscribe links (`ntfy://` deep links are Android-only), so the old scheme forced **four** manual subscriptions on iPhone — the app's absolute minimum is one server URL + one topic, which is what this yields, matching the project's top priority (easiest possible setup). Zero migration cost: the project has never been published (D6 still open). Trade-off accepted: per-kind phone-side subscription settings (mute one kind, loud another) are lost — `events.<name>.enabled/priority/tags` in plugin config provide the same control desktop-side. Side effect: §7.1 log buckets collapse to one topic (an outage logs one line per status class, not four — an improvement). Supersedes the routing row of §2, §5's `topics` option, §6's topic-suffix column, and D4's "four topics" wording. Tests: 39 (assertions updated; the transport rate-limit test now expects a single line).
 
 ---
 

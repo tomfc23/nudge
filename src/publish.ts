@@ -3,6 +3,8 @@
  *  - per-event dedupe + question→finished suppression (§6.2)
  *  - per-session error cooldown (§6.3)
  *  - rate-limited failure logging + recovery lines (§7.1)
+ * All event kinds publish to the ONE configured topic (§13-D9); the kind is
+ * carried by title/priority/tags, so the phone only subscribes once.
  * Dedupe state is process-shared by default (see sharedState): OpenCode can
  * load the plugin multiple times concurrently, and each copy must not
  * re-publish the same event.
@@ -112,7 +114,7 @@ export class Notifier {
       if (kind === "question") this.state.lastQuestion.set(sessionID, now)
     }
 
-    const topic = input.topic ?? this.topicFor(kind)
+    const topic = input.topic ?? this.config.topic
     const priority = input.priority ?? this.priorityFor(kind)
     const tags = input.tags ?? this.tagsFor(kind)
 
@@ -127,7 +129,7 @@ export class Notifier {
 
   /** Bypass dedupe (used by the ntfy_notify tool). */
   custom(input: NotifyInput, sessionID = "custom"): Promise<void> {
-    const topic = input.topic ?? this.config.topics.custom
+    const topic = input.topic ?? this.config.topic
     return this.publish(topic, {
       topic,
       title: input.title,
@@ -135,10 +137,6 @@ export class Notifier {
       ...(input.priority !== undefined ? { priority: input.priority } : {}),
       ...(input.tags && input.tags.length > 0 ? { tags: input.tags } : {}),
     })
-  }
-
-  private topicFor(kind: EventKind): string {
-    return this.config.topics[kind as "question" | "finished" | "error" | "custom"]
   }
 
   private priorityFor(kind: EventKind): number | undefined {
