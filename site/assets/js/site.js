@@ -155,6 +155,99 @@
     });
   }
 
+  /* ---------- provider-to-phone notification relay ---------- */
+  var relay = document.querySelector("[data-relay]");
+  if (relay) {
+    var marks = Array.from(relay.querySelectorAll(".pmark"));
+    var bird = relay.querySelector(".relay__bird");
+    var notice = relay.querySelector(".relay__notice");
+    var noticeIcon = relay.querySelector(".relay__notice-icon");
+    var kind = relay.querySelector(".relay__notice-kicker");
+    var source = relay.querySelector("[data-relay-source]");
+    var message = relay.querySelector("[data-relay-message]");
+    var busy = false;
+    var next = 0;
+    var modes = [
+      ["permission", "Needs your approval"],
+      ["question", "Which approach should I take?"],
+      ["finished", "Task finished"],
+      ["error", "Task failed"],
+    ];
+
+    function send(mark, automatic) {
+      if (busy || (automatic && reduce.matches) || document.hidden || (hero && hero.classList.contains("is-offscreen"))) return;
+      busy = true;
+      var mode = modes[next++ % modes.length];
+      kind.textContent = "Nudge · " + mode[0];
+      source.textContent = mark.querySelector("img").alt;
+      message.textContent = mode[1];
+      mark.classList.add("is-sending");
+
+      if (reduce.matches) {
+        notice.classList.add("is-arrived");
+        setTimeout(function () {
+          mark.classList.remove("is-sending");
+          notice.classList.remove("is-arrived");
+          busy = false;
+        }, 3600);
+        return;
+      }
+
+      var wall = relay.getBoundingClientRect();
+      var tile = mark.getBoundingClientRect();
+      var target = noticeIcon.getBoundingClientRect();
+      var startX = tile.left + tile.width / 2 - wall.left - 17;
+      var startY = tile.top + tile.height / 2 - wall.top - 17;
+      var dx = target.left + target.width / 2 - tile.left - tile.width / 2;
+      var dy = target.top + target.height / 2 - tile.top - tile.height / 2;
+      bird.style.left = startX + "px";
+      bird.style.top = startY + "px";
+      bird.animate(
+        [
+          { transform: "translate(0, 0) rotate(-15deg) scale(.6)", opacity: 0 },
+          { transform: "translate(0, -12px) rotate(-12deg) scale(1)", opacity: 1, offset: 0.16 },
+          { transform: "translate(" + dx * 0.55 + "px, " + (dy * 0.55 - 30) + "px) rotate(8deg)", opacity: 1, offset: 0.58 },
+          { transform: "translate(" + dx + "px, " + dy + "px) rotate(12deg) scale(.65)", opacity: 0 },
+        ],
+        { duration: 1050, easing: "cubic-bezier(.4,0,.6,1)" },
+      );
+
+      setTimeout(function () {
+        mark.classList.remove("is-sending");
+        notice.classList.add("is-arrived");
+      }, 780);
+      setTimeout(function () {
+        notice.classList.remove("is-arrived");
+        busy = false;
+      }, 3600);
+    }
+
+    marks.forEach(function (mark) {
+      var card = mark.querySelector(".pmark__card");
+      card.addEventListener("pointerenter", function () { send(mark); });
+      card.addEventListener("focus", function () { send(mark); });
+    });
+
+    reduce.addEventListener("change", function () {
+      if (reduce.matches) bird.getAnimations().forEach(function (animation) { animation.cancel(); });
+    });
+
+    function sendNext() {
+      send(marks[[0, 2, 3, 5][next % 4]], true);
+      setTimeout(sendNext, 40000);
+    }
+    if (window.IntersectionObserver) {
+      var started = false;
+      new IntersectionObserver(function (entries) {
+        if (started || !entries[0].isIntersecting) return;
+        started = true;
+        setTimeout(sendNext, 8000);
+      }, { threshold: 0.35 }).observe(relay);
+    } else {
+      setTimeout(sendNext, 8000);
+    }
+  }
+
   /* ---------- idle the hero's infinite animations when it is off screen ---------- */
   if (hero && window.IntersectionObserver) {
     new IntersectionObserver(
