@@ -1,12 +1,29 @@
-# opencode-ntfy
+# Nudge
 
-Get [ntfy](https://ntfy.sh) push notifications on your phone when [OpenCode](https://opencode.ai)
+# Nudge sends [ntfy](https://ntfy.sh) push notifications from [OpenCode](https://opencode.ai) and Codex
+to your phone. OpenCode alerts you when it
 needs you — **questions & permission requests**, **finished tasks**, and **errors** — plus an
 `ntfy_notify` tool so the agent itself can ping you.
 
 Works with your **self-hosted ntfy server** and the official **ntfy iOS/Android app**.
 
-## Quick start (5 minutes)
+## Install OpenCode, Codex, or both
+
+Run `sh install.sh` from a checkout, or download it from `https://nudge.tommyek.com/install.sh`.
+The wizard asks which agents to configure; `NTFY_HARNESSES=both|opencode|codex` selects one non-interactively.
+Both agents share one server and phone topic. For Codex, the installer adds `Stop` and
+`PermissionRequest` entries to your existing `~/.codex/hooks.json` (or the current
+project's `.codex/hooks.json`) and stores the ntfy token in a mode-0600 `nudge.json`.
+Open Codex's `/hooks` screen once to review and trust the new hooks. Codex requires
+this for [non-managed hooks](https://developers.openai.com/codex/hooks); until trusted,
+Codex skips them. Existing hooks and the `notify` command stay in place.
+
+Codex currently sends **finished**, **question** (when its final reply asks one), and
+**permission** notifications. OpenCode also supports tool/session **errors** and the
+`ntfy_notify` custom tool. Codex's hook data does not provide the same OpenCode event
+stream, so these latter two features are OpenCode-only.
+
+## OpenCode manual setup
 
 ### 1. Run an ntfy server
 
@@ -143,9 +160,9 @@ curl -fsSL https://nudge.tommyek.com/install.sh -o install.sh && sh install.sh
 ```
 
 The website serves the plugin archive used by the downloaded installer; no Git checkout is needed.
-`sh install.sh` asks five quick questions (access mode,
-config scope, which notifications, phone), installs missing tools *with your consent*,
-provisions the server, writes `opencode.json`, and sends a test push you confirm on the
+`sh install.sh` asks which agents to configure, then walks through access mode,
+config scope, notifications, and phone. It installs missing tools *with your consent*,
+provisions the server, writes the selected agent configs, and sends a test push you confirm on the
 phone. Every question has an env override (`NTFY_MODE=cloudflare CF_HOSTNAME=... sh
 install.sh`), so an agent can drive the exact same wizard non-interactively — or just
 hand [`INSTALL.md`](./INSTALL.md) to your agent and answer its questions in chat.
@@ -283,5 +300,5 @@ It skips the dedupe rules (deliberate sends always go through).
 ```bash
 npm install
 npm run typecheck
-npm test          # 86 tests: classifier, captions, config/token chain, access modes, end-to-end event→publish flow, dedupe/sharing, tool, setup-server.sh + install.sh + uninstall.sh contracts
+npm test          # OpenCode event flow, installer/uninstaller contracts, Codex hooks
 ```

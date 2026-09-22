@@ -733,7 +733,7 @@ async function main() {
   const inst = fileURLToPath(new URL("../install.sh", import.meta.url))
   // Neutralize any wizard env from the outer shell, then apply per-test overrides.
   const cleanEnv = () => ({
-    NTFY_MODE: "", NTFY_SCOPE: "", NTFY_EVENTS: "", NTFY_PHONE: "",
+    NTFY_HARNESSES: "", NTFY_MODE: "", NTFY_SCOPE: "", NTFY_EVENTS: "", NTFY_PHONE: "",
     NTFY_INSTALL_DEPS: "", NTFY_SKIP_CONFIRM: "", CF_HOSTNAME: "", NTFY_CONFIG_FILE: "",
   })
   const runInst = (args: string[] = [], env: Record<string, string> = {}, input?: string) =>
@@ -756,6 +756,12 @@ async function main() {
     const r = runInst([], { NTFY_MODE: "bogus" }, "")
     assert.equal(r.status, 2)
     assert.match(r.stderr, /NTFY_MODE must be local\|tailscale\|cloudflare/)
+  })
+
+  await test("invalid NTFY_HARNESSES fails fast → exit 2", () => {
+    const r = runInst([], { NTFY_HARNESSES: "other" }, "")
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /NTFY_HARNESSES must be both\|opencode\|codex/)
   })
 
   await test("invalid NTFY_SCOPE fails fast → exit 2", () => {
@@ -786,7 +792,7 @@ async function main() {
   await test("INSTALL.md documents the full env contract (drift guard)", () => {
     const md = readFileSync(fileURLToPath(new URL("../INSTALL.md", import.meta.url)), "utf8")
     for (const s of [
-      "NTFY_MODE", "NTFY_SCOPE", "NTFY_EVENTS", "NTFY_PHONE", "NTFY_INSTALL_DEPS",
+      "NTFY_HARNESSES", "NTFY_MODE", "NTFY_SCOPE", "NTFY_EVENTS", "NTFY_PHONE", "NTFY_INSTALL_DEPS",
       "NTFY_SKIP_CONFIRM", "CF_HOSTNAME", "NTFY_PORT", "LAN_IP", "NTFY_CONFIG_FILE",
       "setup-server.sh preflight", "sh install.sh",
       "`0` ok · `2` usage/bad input · `3` missing",  // exit-code contract

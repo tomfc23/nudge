@@ -1,8 +1,9 @@
-# INSTALL.md — have your agent install `opencode-ntfy`
+# INSTALL.md — have your agent install Nudge
 
 Give this file (or its contents) to a coding agent with shell access — OpenCode,
 Claude Code, or similar. It is a complete runbook: the agent asks you a few
-questions in chat, provisions a self-hosted ntfy server, wires the plugin, and
+questions in chat, provisions a self-hosted ntfy server, wires OpenCode, Codex,
+or both, and
 proves delivery to your phone with a test push.
 
 **If you are the agent reading this:** follow the steps in order. Do not
@@ -16,7 +17,7 @@ without the verification table.
 ## Contract
 
 - **One core:** `scripts/setup-server.sh` provisions the server;
-  `install.sh` drives it and writes `opencode.json`. Never hand-roll either step.
+  `install.sh` drives it and writes the selected agent configs. Never hand-roll either step.
 - **Exit codes (both scripts):** `0` ok · `2` usage/bad input · `3` missing
   dependency/login/input · `4` port conflict · `5` server/verification failure.
 - **Idempotent:** re-running is always safe (same user, same token, same topic
@@ -31,10 +32,11 @@ without the verification table.
 
 | # | Question | Answers map to |
 |---|---|---|
+| 0 | **Which agents?** OpenCode, Codex, or both | `NTFY_HARNESSES` |
 | 1 | **How should the phone reach the server?** local (same Wi-Fi) / tailscale (private VPN) / cloudflare (public URL) | `NTFY_MODE` |
 | 1a | cloudflare only: **public hostname?** (e.g. `ntfy.example.com`) | `CF_HOSTNAME` |
 | 1b | local only: show the detected LAN IP from preflight and confirm it | `LAN_IP` |
-| 2 | **Where to configure?** global (`~/.config/opencode/opencode.json`, all projects) or project (`<project>/opencode.json`) | `NTFY_SCOPE` |
+| 2 | **Where to configure?** global (all projects) or project (current directory) | `NTFY_SCOPE` |
 | 3 | **Which notifications?** all five (recommended) or which to disable: question, permission, finished, error, custom | `NTFY_EVENTS` (`all` or csv of the **enabled** kinds) |
 | 4 | **Which phone?** ios / android / none | `NTFY_PHONE` |
 | 5 | **May I install missing tools via Homebrew and run cloudflared/tailscale logins in your browser?** | `NTFY_INSTALL_DEPS` (`1`/`0`) |
@@ -89,10 +91,11 @@ Carry the final values forward: `CF_HOSTNAME`, `NTFY_PORT`, `LAN_IP`.
 drops every env var (put comments on their own line, or don't use any):
 
 ```bash
-NTFY_MODE=cloudflare CF_HOSTNAME=ntfy.example.com NTFY_SCOPE=global NTFY_EVENTS=all NTFY_PHONE=ios NTFY_INSTALL_DEPS=1 NTFY_SKIP_CONFIRM=1 sh install.sh
+NTFY_HARNESSES=both NTFY_MODE=cloudflare CF_HOSTNAME=ntfy.example.com NTFY_SCOPE=global NTFY_EVENTS=all NTFY_PHONE=ios NTFY_INSTALL_DEPS=1 NTFY_SKIP_CONFIRM=1 sh install.sh
 ```
 
-Env values (from Q1-Q5): `NTFY_MODE` = local|tailscale|cloudflare ·
+Env values (from Q0-Q5): `NTFY_HARNESSES` = both|opencode|codex ·
+`NTFY_MODE` = local|tailscale|cloudflare ·
 `CF_HOSTNAME` cloudflare only (`LAN_IP=...` for local) · `NTFY_SCOPE` =
 global|project (for project, run from the project root) · `NTFY_EVENTS` = `all`
 or csv of the enabled kinds · `NTFY_PHONE` = ios|android|none ·
@@ -117,7 +120,7 @@ smoke line above, is where Step 5's "server setup" row comes from. The
 
 ## Step 3 — verify the config, then walk the user through the phone
 
-Read back what was written (use the path from `config written:`):
+If OpenCode was selected, read back what was written (use the path from `config written:`):
 
 ```bash
 node -e '
@@ -129,6 +132,13 @@ console.log("serverUrl="+e[1].serverUrl);
 console.log("baseTopic="+e[1].baseTopic);
 console.log("token="+(e[1].token||"(none)"));' <config-path>
 ```
+
+If Codex was selected, verify `<Codex home>/nudge.json` has `serverUrl`, `topic`,
+and `token`, and that `hooks.json` has Nudge entries under `Stop` and
+`PermissionRequest`. In Codex, open `/hooks` and trust both entries; Codex
+skips untrusted hooks. Existing Codex hooks must remain in place. Codex supports
+finished, question, and permission notifications; OpenCode additionally supports
+errors and its `ntfy_notify` tool.
 
 All three fields present (or token intentionally absent for unauthenticated
 servers). Then post the phone steps to the user — iOS has **no one-tap
@@ -168,8 +178,9 @@ curl -s -o /dev/null -w '%{http_code}\n' -m 10 \
 
 ## Step 5 — finish and report
 
-Remind the user: **start (or restart) OpenCode once** — a newly added plugin
-loads on next start; option changes hot-reload afterwards. The `[ntfy]`
+Remind the user: **start (or restart) OpenCode once** if it was selected — a newly added plugin
+loads on next start; option changes hot-reload afterwards. For Codex, review
+and trust the Nudge hooks in `/hooks`. The `[ntfy]`
 startup log prints the subscribe topic — cross-check it against `baseTopic`.
 
 Report exactly this table (checked items only if actually observed):

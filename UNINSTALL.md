@@ -1,4 +1,4 @@
-# UNINSTALL.md — have your agent uninstall `opencode-ntfy`
+# UNINSTALL.md — have your agent uninstall Nudge
 
 Give this file (or its contents) to a coding agent with shell access — OpenCode,
 Claude Code, or similar. It is a complete runbook: the agent asks which of three
@@ -25,7 +25,8 @@ work around the gate.
   matcher: both entry forms (`plugin` tuple and `plugins` object), sibling keys
   and foreign entries untouched (the file **is** rewritten as canonical 2-space
   JSON — indentation/newline normalized, content and key order preserved).
-- **Levels (cumulative):** **L1** = config entry only — notifications stop, the
+- **Levels (cumulative):** **L1** = OpenCode config entry and Nudge's Codex
+  `Stop`/`PermissionRequest` hooks plus Codex token config — notifications stop, the
   server keeps running · **L2** = + server & tunnel infra — `compose down`
   (**data kept**, re-installable), LaunchAgent booted out + plist deleted,
   cloudflared tunnel deleted, `tailscale serve reset` · **L3** = + full wipe —
@@ -73,6 +74,9 @@ loop:
 match** · `NTFY_PLUGIN_DIR=<dir>` plugin dir (custom dirs are never deleted) ·
 `NTFY_REMOVE_PATHS` colon list of Step-1-confirmed stale entries only ·
 `XDG_CONFIG_HOME` standard config-root override.
+
+Codex's other hooks and its `notify` command are preserved. The script checks
+both `CODEX_HOME` (or `~/.codex`) and the current project's `.codex` directory.
 
 ---
 

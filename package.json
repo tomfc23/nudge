@@ -1,7 +1,7 @@
 {
   "name": "opencode-ntfy",
   "version": "0.1.0",
-  "description": "OpenCode plugin: notifications to a self-hosted ntfy server (iOS-friendly)",
+  "description": "Nudge notifications for OpenCode and Codex via a self-hosted ntfy server",
   "type": "module",
   "license": "MIT",
   "main": "./index.ts",
@@ -12,7 +12,7 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "tsx scripts/test.ts"
+    "test": "tsx scripts/test.ts && node scripts/test-codex.mjs"
   },
   "dependencies": {
     "@opencode/plugin": "^2.0.12"

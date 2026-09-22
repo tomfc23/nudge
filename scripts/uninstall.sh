@@ -118,6 +118,13 @@ list_config_files() {
   printf '%s\n' "${XDG_CONFIG_HOME:-$HOME/.config}/opencode/opencode.json"
   if [ -f "$PWD/opencode.json" ]; then printf '%s\n' "$PWD/opencode.json"; fi
 }
+list_codex_dirs() {
+  printf '%s\n' "${CODEX_HOME:-$HOME/.codex}"
+  [ "$PWD/.codex" = "${CODEX_HOME:-$HOME/.codex}" ] || printf '%s\n' "$PWD/.codex"
+}
+run_codex() { # <dir> <--scan|--remove> -> CODEX_ST
+  CODEX_ST="$(node "$REPO_ROOT/scripts/configure-codex.mjs" "$2" "$1/hooks.json" "$1/nudge.json" 2>&1)" || CODEX_ST="failed: $CODEX_ST"
+}
 
 # ------------------------------------------------------------------ config tool (node — JSON-safe, D14)
 # prints: "<status>\t<detail>"  ·  modes: scan (read-only) | remove
@@ -265,6 +272,13 @@ collect_inventory() {
     add_item "config:$f" "$CFG_ST" "$CFG_DET"
   done < "$CONFIGS"
   rm -f "$CONFIGS"
+  CODEX_DIRS="$(list_codex_dirs)"
+  while IFS= read -r d; do
+    run_codex "$d" --scan
+    add_item "codex:$d/hooks.json" "$CODEX_ST" ""
+  done <<EOF
+$CODEX_DIRS
+EOF
 
   if [ -d "$CLONE_DEFAULT" ]; then add_item "clone-default" present "$CLONE_DEFAULT"; else add_item "clone-default" absent ""; fi
 
@@ -362,6 +376,17 @@ run_l1() {
     esac
   done < "$CONFIGS"
   rm -f "$CONFIGS"
+  CODEX_DIRS="$(list_codex_dirs)"
+  while IFS= read -r d; do
+    run_codex "$d" --remove
+    case "$CODEX_ST" in
+      removed) add_item "codex:$d/hooks.json" removed "Nudge hooks and token config removed" ;;
+      absent) add_item "codex:$d/hooks.json" skipped-already-gone "no Nudge hooks" ;;
+      *) add_item "codex:$d/hooks.json" failed "$CODEX_ST" ;;
+    esac
+  done <<EOF
+$CODEX_DIRS
+EOF
   if [ "$REMOVED" = 1 ]; then
     add_item "restart" manual "start (or restart) OpenCode once to unload the plugin"
     add_item "phone-subscription" manual "left in the app so a reinstall resubscribes to the same topic — delete it there if you are done for good"
