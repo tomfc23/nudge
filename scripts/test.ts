@@ -4,7 +4,7 @@
  */
 
 import assert from "node:assert/strict"
-import { spawnSync } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import net from "node:net"
 import os from "node:os"
@@ -798,6 +798,32 @@ async function main() {
     ]) assert.ok(md.includes(s), `INSTALL.md missing: ${s}`)
     // Dogfood defect #2: a comment after a `\` continuation silently drops every env var.
     assert.ok(!/^[^\n]*\\[ \t]+#/m.test(md), "INSTALL.md: comment after line-continuation backslash")
+  })
+
+  await test("site serves a complete plugin archive for the downloaded installer", async () => {
+    const listener = net.createServer()
+    await new Promise<void>((resolve) => listener.listen(0, "127.0.0.1", resolve))
+    const port = (listener.address() as net.AddressInfo).port
+    await new Promise<void>((resolve) => listener.close(() => resolve()))
+    const site = spawn(process.execPath, [fileURLToPath(new URL("serve-site.mjs", import.meta.url)), "--port", String(port)], { stdio: "ignore" })
+    try {
+      let response: Response | undefined
+      for (let i = 0; i < 30; i++) {
+        try { response = await fetch(`http://127.0.0.1:${port}/plugin.tar.gz`); break }
+        catch { await new Promise((resolve) => setTimeout(resolve, 50)) }
+      }
+      assert.equal(response?.status, 200)
+      const archive = Buffer.from(await response!.arrayBuffer())
+      const listed = spawnSync("tar", ["-tzf", "-"], { input: archive, encoding: "utf8" })
+      assert.equal(listed.status, 0, listed.stderr)
+      for (const file of ["index.ts", "package-lock.json", "src/index.ts", "scripts/setup-server.sh"]) {
+        assert.ok(listed.stdout.split("\n").includes(file), `archive missing ${file}`)
+      }
+      const installer = await (await fetch(`http://127.0.0.1:${port}/install.sh`)).text()
+      assert.match(installer, /plugin\.tar\.gz/)
+    } finally {
+      site.kill()
+    }
   })
 
   console.log("uninstall.sh contract (SPEC §15)")

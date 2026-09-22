@@ -2,8 +2,8 @@
 #
 # opencode-ntfy installer — seamless setup for humans AND agents (SPEC §14.4 A).
 #
-#   human (from the project website, once published):
-#     curl -fsSL <site>/install.sh -o install.sh && sh install.sh
+#   human (from the project website):
+#     curl -fsSL https://nudge.tommyek.com/install.sh -o install.sh && sh install.sh
 #   from a checkout:
 #     sh install.sh
 #   scripted / agent-driven (every question has an env override; unset = prompt):
@@ -24,7 +24,8 @@
 #   NTFY_INSTALL_DEPS 1 (auto-yes) | 0 (auto-no)        answers the Homebrew/log-in consents
 #   NTFY_SKIP_CONFIRM 1                                 skip the subscribe-wait + "did it arrive?"
 # Other env: CF_HOSTNAME, NTFY_PORT, LAN_IP, NTFY_SETUP_DIR, NTFY_CONFIG_FILE
-#            (exact config path — wins over NTFY_SCOPE), NTFY_PLUGIN_DIR, NTFY_REPO_URL.
+#            (exact config path — wins over NTFY_SCOPE), NTFY_PLUGIN_DIR,
+#            NTFY_SITE_URL (default: https://nudge.tommyek.com), NTFY_REPO_URL.
 #
 # Exit codes: 0 ok · 2 usage/bad input/EOF · 3 required dependency missing ·
 #             otherwise the exit code of scripts/setup-server.sh (its 2/3/4/5).
@@ -56,7 +57,7 @@ Questions: access mode (local|tailscale|cloudflare) -> config scope (global|proj
 -> which notifications (all or per-kind) -> phone OS -> (preflight fixes deps).
 Env overrides: NTFY_MODE NTFY_SCOPE NTFY_EVENTS NTFY_PHONE NTFY_INSTALL_DEPS
 NTFY_SKIP_CONFIRM CF_HOSTNAME NTFY_PORT LAN_IP NTFY_CONFIG_FILE NTFY_SETUP_DIR
-NTFY_PLUGIN_DIR NTFY_REPO_URL
+NTFY_PLUGIN_DIR NTFY_SITE_URL NTFY_REPO_URL
 
 Exit codes: 0 ok · 2 usage/input · 3 missing dependency · else setup-server.sh's
 USAGE
@@ -211,13 +212,26 @@ if [ -f "$SCRIPT_DIR/scripts/setup-server.sh" ] && [ -f "$SCRIPT_DIR/src/index.t
 else
   REPO_DIR="${NTFY_PLUGIN_DIR:-$HOME/.local/share/opencode-ntfy}"
   if [ ! -f "$REPO_DIR/scripts/setup-server.sh" ]; then
-    REPO_URL="${NTFY_REPO_URL:-}"
-    [ -n "$REPO_URL" ] || die 2 "not running from a checkout and NTFY_REPO_URL is not set (the repo URL lands with the project website — SPEC §14 Phase 4)"
-    command -v git >/dev/null 2>&1 || die 3 "git not found — run: xcode-select --install (macOS) or install git, then re-run"
+    [ ! -e "$REPO_DIR" ] || die 3 "$REPO_DIR exists but is not a complete plugin install — move it aside and re-run"
     say "installing the plugin to $REPO_DIR"
     mkdir -p "$(dirname "$REPO_DIR")"
-    git clone --depth 1 "$REPO_URL" "$REPO_DIR" || die 3 "git clone failed: $REPO_URL"
-    ok "cloned"
+    TMP_DIR="$(mktemp -d "$REPO_DIR.tmp.XXXXXX")" || die 3 "could not create install directory"
+    trap 'if [ -n "${TMP_DIR:-}" ]; then rm -rf "$TMP_DIR"; fi' EXIT
+    if [ -n "${NTFY_REPO_URL:-}" ]; then
+      command -v git >/dev/null 2>&1 || die 3 "git is required for NTFY_REPO_URL"
+      git clone --depth 1 "$NTFY_REPO_URL" "$TMP_DIR" || die 3 "git clone failed: $NTFY_REPO_URL"
+    else
+      SITE_URL="${NTFY_SITE_URL:-https://nudge.tommyek.com}"
+      curl -fsSL "${SITE_URL%/}/plugin.tar.gz" -o "$TMP_DIR/plugin.tar.gz" || die 3 "could not download plugin from $SITE_URL"
+      tar -xzf "$TMP_DIR/plugin.tar.gz" -C "$TMP_DIR" || die 3 "could not unpack plugin archive"
+      rm "$TMP_DIR/plugin.tar.gz"
+    fi
+    [ -f "$TMP_DIR/src/index.ts" ] && [ -f "$TMP_DIR/scripts/setup-server.sh" ] || die 3 "downloaded plugin is incomplete"
+    command -v npm >/dev/null 2>&1 || die 3 "npm is required to install the OpenCode plugin dependency"
+    npm ci --omit=dev --ignore-scripts --prefix "$TMP_DIR" || die 3 "could not install the OpenCode plugin dependency"
+    mv "$TMP_DIR" "$REPO_DIR" || die 3 "could not move plugin to $REPO_DIR"
+    TMP_DIR=""
+    ok "plugin installed"
   else
     info "existing plugin install found: $REPO_DIR"
   fi

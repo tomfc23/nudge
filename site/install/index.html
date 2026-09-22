@@ -10,7 +10,7 @@
 <main id="main">
 <section class="section"><div class="container"><div class="sec-head"><span class="eyebrow">Install path</span><h1 class="h2">Hand it to your agent. <strong>Answer five questions.</strong></h1><p class="sec-sub">The installer provisions the ntfy server, wires the plugin, and sends a test push you confirm on your phone. Nothing runs until you have answered.</p></div>
 <p class="sec-sub">Run this in a terminal on the machine where your agent runs:</p>
-<div class="installbox mt-2" data-install><code class="installbox__cmd" data-install-cmd>curl -fsSL https://nudge.example.com/install.sh -o install.sh &amp;&amp; sh install.sh</code><button class="copybtn" type="button" data-copy>Copy</button><span class="sr-only" role="status" aria-live="polite" data-copy-status></span></div>
+<div class="installbox mt-2" data-install><code class="installbox__cmd" data-install-cmd>curl -fsSL https://nudge.tommyek.com/install.sh -o install.sh &amp;&amp; NTFY_SITE_URL=https://nudge.tommyek.com sh install.sh</code><button class="copybtn" type="button" data-copy>Copy</button><span class="sr-only" role="status" aria-live="polite" data-copy-status></span></div>
 <p class="muted small mt-2">Needs Docker (or Colima) and Node. The installer offers to install missing tools with your consent.</p><div class="row mt-2"><a class="btn btn--ghost" href="/INSTALL.md">Read the agent runbook</a><a class="btn btn--ghost" href="/install.sh">Inspect install.sh</a></div></div></section>
 </main>
     <footer class="footer"><div class="container"><div class="footer__base footer__base--solo"><span>MIT licensed</span><span><a href="/">Nudge</a> · <a href="/docs/">Documentation</a></span></div></div></footer>

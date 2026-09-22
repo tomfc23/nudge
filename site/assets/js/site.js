@@ -6,7 +6,7 @@
 (function () {
   "use strict";
 
-  var SITE_PLACEHOLDER = "https://nudge.example.com";
+  var SITE_PLACEHOLDER = "https://nudge.tommyek.com";
 
   /* ---------- install command host ---------- */
   var local = /^(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)$/.test(location.hostname);

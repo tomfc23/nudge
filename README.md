@@ -136,7 +136,14 @@ Ask the agent: *"send me an ntfy test notification"* — it will use the `ntfy_n
 The plugin talks plain HTTP to whatever `serverUrl` you give it, so all three ways of
 reaching a self-hosted ntfy server work out of the box.
 
-**New install? Run the wizard** — `sh install.sh` asks five quick questions (access mode,
+**New install? Run the wizard** — download it from the project site, or run it from a checkout:
+
+```bash
+curl -fsSL https://nudge.tommyek.com/install.sh -o install.sh && sh install.sh
+```
+
+The website serves the plugin archive used by the downloaded installer; no Git checkout is needed.
+`sh install.sh` asks five quick questions (access mode,
 config scope, which notifications, phone), installs missing tools *with your consent*,
 provisions the server, writes `opencode.json`, and sends a test push you confirm on the
 phone. Every question has an env override (`NTFY_MODE=cloudflare CF_HOSTNAME=... sh
@@ -277,7 +284,7 @@ It skips the dedupe rules (deliberate sends always go through).
 ```bash
 npm install
 npm run typecheck
-npm test          # 87 tests: classifier, captions, config/token chain, access modes, end-to-end event→publish flow, dedupe/sharing, tool, setup-server.sh + install.sh + uninstall.sh + UNINSTALL.md contracts
+npm test          # 88 tests: classifier, captions, config/token chain, access modes, end-to-end event→publish flow, dedupe/sharing, tool, setup-server.sh + install.sh + uninstall.sh + site archive + UNINSTALL.md contracts
 ```
 
 Design rationale and decision log: [SPEC.md](./SPEC.md).

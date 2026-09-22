@@ -39,13 +39,22 @@ without the verification table.
 | 4 | **Which phone?** ios / android / none | `NTFY_PHONE` |
 | 5 | **May I install missing tools via Homebrew and run cloudflared/tailscale logins in your browser?** | `NTFY_INSTALL_DEPS` (`1`/`0`) |
 
-Run every command below **from the repo root** (the directory containing
-`install.sh`). If you do not have the repo, ask the user for its URL and
-`git clone <url>` first.
+If you have a checkout, run the commands below from its root. Otherwise,
+download the installer into the user's project directory (or another working
+directory for a global install):
+
+```bash
+curl -fsSL https://nudge.tommyek.com/install.sh -o install.sh
+```
+
+The downloaded installer fetches the plugin from the same website. In this
+case, skip Step 1 and go to Step 2: the installer runs preflight itself and
+reports any missing tools or login steps. Keep the working directory as the
+desired project root when `NTFY_SCOPE=project`.
 
 ---
 
-## Step 1 — preflight (you run it; parse the JSON)
+## Step 1 — preflight for a checkout (you run it; parse the JSON)
 
 Preflight reads `CF_HOSTNAME`, `NTFY_PORT` and `LAN_IP` from the **environment**
 — pass what you collected in Q1/Q1a/Q1b (omit what doesn't apply to the mode):

@@ -13,9 +13,11 @@ import { createServer } from "node:http";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawn } from "node:child_process";
 
 const repo = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const root = join(repo, "site");
+const PACKAGE_FILES = ["index.ts", "install.sh", "package.json", "package-lock.json", "src", "scripts/setup-server.sh", "scripts/uninstall.sh", "README.md", "INSTALL.md", "UNINSTALL.md", "LICENSE"];
 
 const SHARED = {
   "/install.sh": join(repo, "install.sh"),
@@ -100,6 +102,21 @@ const server = createServer((req, res) => {
   if (req.method !== "GET" && req.method !== "HEAD") {
     res.writeHead(405, { allow: "GET, HEAD", "content-type": "text/plain; charset=utf-8" });
     res.end("method not allowed\n");
+    return;
+  }
+
+  if ((req.url || "").split("?")[0] === "/plugin.tar.gz") {
+    res.writeHead(200, {
+      "content-type": "application/gzip",
+      "cache-control": "no-cache",
+      "x-content-type-options": "nosniff",
+    });
+    if (req.method === "HEAD") return res.end();
+    const archive = spawn("tar", ["-czf", "-", "-C", repo, ...PACKAGE_FILES]);
+    archive.stdout.pipe(res);
+    archive.on("error", (error) => res.destroy(error));
+    archive.on("close", (code) => { if (code !== 0) res.destroy(new Error(`tar exited ${code}`)); });
+    res.on("close", () => archive.kill());
     return;
   }
 
