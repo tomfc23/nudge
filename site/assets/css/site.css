@@ -5,25 +5,25 @@
 
 /* ---------- tokens ---------- */
 :root {
-  /* near-black plum keeps the pink clear without tinting the text */
-  --ink-0: oklch(0.135 0.009 335);
-  --ink-1: oklch(0.185 0.011 335);
-  --ink-2: oklch(0.235 0.013 335);
+  /* near-black navy keeps the blue clear without tinting the text */
+  --ink-0: oklch(0.135 0.018 260);
+  --ink-1: oklch(0.185 0.020 260);
+  --ink-2: oklch(0.235 0.026 260);
 
-  --line: oklch(0.62 0.015 335 / 0.30);
-  --line-soft: oklch(0.62 0.015 335 / 0.14);
-  --line-bright: oklch(0.80 0.015 335 / 0.42);
+  --line: oklch(0.62 0.015 260 / 0.30);
+  --line-soft: oklch(0.62 0.015 260 / 0.14);
+  --line-bright: oklch(0.80 0.015 260 / 0.42);
 
-  --fg-0: oklch(0.97 0.004 335);
-  --fg-1: oklch(0.85 0.008 335);
-  --fg-2: oklch(0.81 0.010 335);
-  --fg-3: oklch(0.78 0.010 335);
+  --fg-0: oklch(0.97 0.004 260);
+  --fg-1: oklch(0.85 0.008 260);
+  --fg-2: oklch(0.81 0.010 260);
+  --fg-3: oklch(0.78 0.010 260);
 
-  /* pink is the Nudge signal; state colors keep their own meaning */
-  --accent: oklch(0.74 0.20 335);
-  --accent-hover: oklch(0.80 0.18 335);
-  --accent-dim: oklch(0.68 0.16 335);
-  --accent-ink: oklch(0.18 0.018 335);
+  /* blue is the Nudge signal; state colors keep their own meaning */
+  --accent: oklch(0.69 0.19 260);
+  --accent-hover: oklch(0.76 0.17 260);
+  --accent-dim: oklch(0.64 0.16 260);
+  --accent-ink: oklch(0.16 0.018 260);
 
   --canvas: var(--ink-0);
   --surface-1: var(--ink-1);
@@ -41,7 +41,7 @@
   --action-secondary: var(--surface-1);
   --action-secondary-hover: var(--surface-2);
   --focus-ring: var(--accent-hover);
-  --selection-bg: oklch(0.74 0.20 335 / 0.28);
+  --selection-bg: oklch(0.69 0.19 260 / 0.28);
 
   --status-success: oklch(0.76 0.090 151);
   --status-warning: oklch(0.80 0.115 78);
@@ -325,7 +325,7 @@ main > .section:first-child {
 }
 
 .nav.is-scrolled {
-  background: oklch(0.135 0.009 335 / 0.93);
+  background: oklch(0.135 0.018 260 / 0.93);
   border-bottom-color: var(--line-soft);
 }
 
@@ -506,7 +506,7 @@ main > .section:first-child {
   position: absolute;
   inset: 0;
   z-index: 1;
-  background: radial-gradient(120% 90% at 28% 18%, oklch(0.23 0.045 335) 0%, var(--ink-0) 68%);
+  background: radial-gradient(120% 90% at 28% 18%, oklch(0.23 0.045 260) 0%, var(--ink-0) 68%);
 }
 
 .liquid canvas {
@@ -531,22 +531,22 @@ main > .section:first-child {
   pointer-events: none;
   background: linear-gradient(
       100deg,
-      oklch(0.12 0.010 335 / 0.86) 0%,
-      oklch(0.12 0.010 335 / 0.42) 42%,
+      oklch(0.12 0.010 260 / 0.86) 0%,
+      oklch(0.12 0.010 260 / 0.42) 42%,
       transparent 72%
     ),
-    linear-gradient(to bottom, oklch(0.12 0.010 335 / 0.55) 0%, transparent 26%);
+    linear-gradient(to bottom, oklch(0.12 0.010 260 / 0.55) 0%, transparent 26%);
 }
 
 @media (min-width: 1024px) {
   .hero__scrim {
     background: linear-gradient(
         100deg,
-        oklch(0.12 0.010 335 / 0.88) 0%,
-        oklch(0.12 0.010 335 / 0.4) 46%,
+        oklch(0.12 0.010 260 / 0.88) 0%,
+        oklch(0.12 0.010 260 / 0.4) 46%,
         transparent 74%
       ),
-      linear-gradient(to bottom, oklch(0.12 0.010 335 / 0.6) 0%, transparent 24%);
+      linear-gradient(to bottom, oklch(0.12 0.010 260 / 0.6) 0%, transparent 24%);
   }
 }
 
@@ -634,7 +634,7 @@ main > .section:first-child {
   gap: 0;
   width: 100%;
   border: 1px solid var(--line);
-  background: oklch(0.11 0.010 335 / 0.88);
+  background: oklch(0.11 0.010 260 / 0.88);
 }
 
 .installbox__cmd {
@@ -704,7 +704,7 @@ main > .section:first-child {
   content: "";
   position: absolute;
   inset: 4% -16%;
-  background: radial-gradient(closest-side, oklch(0.55 0.12 335 / 0.14), transparent 76%);
+  background: radial-gradient(closest-side, oklch(0.55 0.12 260 / 0.14), transparent 76%);
   pointer-events: none;
 }
 
@@ -713,7 +713,7 @@ main > .section:first-child {
   z-index: 4;
   opacity: 0;
   pointer-events: none;
-  filter: brightness(1.3) drop-shadow(0 0 12px oklch(0.74 0.20 335 / 0.8));
+  filter: brightness(1.3) drop-shadow(0 0 12px oklch(0.69 0.19 260 / 0.8));
 }
 
 .relay__notice {
@@ -729,7 +729,7 @@ main > .section:first-child {
   padding: 12px 14px;
   border: 1px solid var(--line-bright);
   border-radius: 15px;
-  background: oklch(0.18 0.018 335 / 0.95);
+  background: oklch(0.18 0.018 260 / 0.95);
   box-shadow: 0 18px 46px -18px oklch(0 0 0 / 0.8);
   opacity: 0;
   pointer-events: none;
@@ -740,8 +740,8 @@ main > .section:first-child {
 
 .relay__notice.is-arrived {
   opacity: 1;
-  border-color: oklch(0.74 0.20 335 / 0.72);
-  box-shadow: 0 18px 46px -18px oklch(0 0 0 / 0.8), 0 0 28px oklch(0.74 0.20 335 / 0.24);
+  border-color: oklch(0.69 0.19 260 / 0.72);
+  box-shadow: 0 18px 46px -18px oklch(0 0 0 / 0.8), 0 0 28px oklch(0.69 0.19 260 / 0.24);
   transform: translateX(-50%);
 }
 
@@ -797,7 +797,7 @@ main > .section:first-child {
   background: radial-gradient(
     circle at 30% 25%,
     var(--tint, oklch(1 0 0 / 0.09)),
-    oklch(0.15 0.014 335 / 0.95) 68%
+    oklch(0.15 0.014 260 / 0.95) 68%
   );
   box-shadow: 0 24px 54px -20px oklch(0 0 0 / 0.75), inset 0 2px 0 oklch(1 0 0 / 0.07);
   transform: rotate(calc(var(--rot) * 1deg));
@@ -806,8 +806,8 @@ main > .section:first-child {
 
 .pmark__card:hover,
 .pmark__card:focus-visible {
-  border-color: oklch(0.74 0.20 335 / 0.5);
-  box-shadow: 0 24px 54px -18px oklch(0 0 0 / 0.8), 0 0 0 1px oklch(0.74 0.20 335 / 0.3),
+  border-color: oklch(0.69 0.19 260 / 0.5);
+  box-shadow: 0 24px 54px -18px oklch(0 0 0 / 0.8), 0 0 0 1px oklch(0.69 0.19 260 / 0.3),
     inset 0 2px 0 oklch(1 0 0 / 0.1);
 }
 
@@ -820,7 +820,7 @@ main > .section:first-child {
 
 .pmark.is-sending .pmark__card {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px oklch(0.74 0.20 335 / 0.5), 0 0 28px oklch(0.74 0.20 335 / 0.35);
+  box-shadow: 0 0 0 1px oklch(0.69 0.19 260 / 0.5), 0 0 28px oklch(0.69 0.19 260 / 0.35);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -1171,7 +1171,7 @@ main > .section:first-child {
 
 .term {
   border: 1px solid var(--line);
-  background: oklch(0.105 0.010 335 / 0.9);
+  background: oklch(0.105 0.010 260 / 0.9);
 }
 
 .term__bar {
@@ -1261,7 +1261,7 @@ main > .section:first-child {
 .footer {
   border-top: 1px solid var(--line-soft);
   padding-block: 56px 40px;
-  background: oklch(0.125 0.008 335);
+  background: oklch(0.125 0.008 260);
 }
 
 .footer__grid {
