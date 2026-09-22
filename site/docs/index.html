@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Docs — Nudge</title>
+    <meta name="description" content="Documentation for Nudge: install paths, configuration reference, access modes, troubleshooting, and uninstall." />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#100e0b" />
+    <link rel="icon" type="image/png" href="/assets/nudge-bird.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@10..48,75..100,200..800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+    />
+    <link rel="stylesheet" href="/assets/css/site.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <header class="nav" data-nav>
+      <div class="container nav__inner">
+        <a class="brand" href="/" aria-label="Nudge, home">
+          <img class="brand__mark" src="/assets/nudge-bird.png" alt="" width="28" height="28" />
+          <span class="brand__name">Nudge</span>
+        </a>
+
+        <nav class="nav__links" aria-label="Primary">
+
+          <a href="/install/">Install</a>
+          <a href="/events/">Notifications</a>
+          <a href="/how/">How it works</a>
+          <a href="/docs/" aria-current="page">Docs</a>
+        </nav>
+
+      </div>
+    </header>
+
+    <main id="main" class="docshell">
+      <div class="container docshell__grid">
+        <div>
+          <span class="eyebrow">Documentation</span>
+          <h1 class="h2 h1-lg mt-1">Docs land next.</h1>
+          <p class="sec-sub mt-1">
+            This page is a placeholder. The landing page is the first iteration of the site; the
+            reference pages below are the planned set, drawn from the project's own spec and install
+            runbook.
+          </p>
+
+          <div class="row mt-2">
+            <a class="btn btn--accent" href="/">Back to the landing page</a>
+            <a class="btn btn--ghost" href="/install.sh">Read install.sh</a>
+          </div>
+        </div>
+
+        <ol class="toc">
+          <li><span>01</span><span>Overview — what it does, what it needs</span><span>soon</span></li>
+          <li><span>02</span><span>Install — the wizard, the agent runbook, and bringing your own server</span><span>soon</span></li>
+          <li id="configuration"><span>03</span><span>Configuration — every option, its default, and what it changes</span><span>soon</span></li>
+          <li><span>04</span><span>Access modes — local, Tailscale, Cloudflare, and how to switch</span><span>soon</span></li>
+          <li id="troubleshooting"><span>05</span><span>Troubleshooting — symptoms and the fix for each</span><span>soon</span></li>
+          <li id="uninstall"><span>06</span><span>Uninstall — three levels, from plugin-only to a full wipe</span><span>soon</span></li>
+        </ol>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="container">
+        <div class="footer__base footer__base--solo">
+          <span>MIT licensed</span>
+          <span><a href="/">Nudge</a> · <a href="/install/">Install</a></span>
+        </div>
+      </div>
+    </footer>
+
+    <script src="/assets/js/site.js" defer></script>
+  </body>
+</html>

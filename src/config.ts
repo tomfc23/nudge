@@ -45,7 +45,7 @@ export interface Config {
   token?: string
   /** The one topic every event kind publishes to (SPEC.md §13-D9). */
   topic: string
-  events: { question: QuestionCfg; finished: EventCfg; error: ErrorCfg }
+  events: { question: QuestionCfg; finished: EventCfg; error: ErrorCfg; permission: EventCfg }
   dedupeWindowMs: number
   publishTimeoutMs: number
   failureLogIntervalMs: number
@@ -155,6 +155,7 @@ export async function readConfig(options: PluginOptions, storage: StorageLike): 
   const evQuestion = obj(ev.question)
   const evFinished = obj(ev.finished)
   const evError = obj(ev.error)
+  const evPermission = obj(ev.permission)
 
   const idleMode: IdleMode =
     evQuestion.idleMode === "always" || evQuestion.idleMode === "off" ? evQuestion.idleMode : "heuristic"
@@ -185,6 +186,14 @@ export async function readConfig(options: PluginOptions, storage: StorageLike): 
         priority: priority(evError.priority, 4),
         tags: stringArray(evError.tags, ["rotating_light"]),
         cooldownMs: num(evError.cooldownSec, 60) * 1000,
+      },
+      // Permission asks are their own kind (SPEC §6): the agent is BLOCKED
+      // until the user answers, so they default to urgent priority and a
+      // distinct tag — more urgent than a question, semantically separate.
+      permission: {
+        enabled: bool(evPermission.enabled, true),
+        priority: priority(evPermission.priority, 5), // urgent
+        tags: stringArray(evPermission.tags, ["lock"]),
       },
     },
     dedupeWindowMs: num(options.dedupeWindowMs, 10_000),

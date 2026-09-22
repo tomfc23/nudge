@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Nudge — phone notifications for your coding agent</title>
+    <meta name="description" content="Get a phone notification when your OpenCode agent needs you or finishes a task." />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#100e0b" />
+    <link rel="icon" type="image/png" href="/assets/nudge-bird.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@10..48,75..100,200..800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
+    <link rel="stylesheet" href="/assets/css/site.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="nav" data-nav>
+      <div class="container nav__inner">
+        <a class="brand" href="/" aria-label="Nudge, home">
+          <img class="brand__mark" src="/assets/nudge-bird.png" alt="" width="28" height="28" />
+          <span class="brand__name">Nudge</span>
+        </a>
+        <nav class="nav__links" aria-label="Primary">
+          <a href="/install/">Install</a><a href="/events/">Notifications</a><a href="/how/">How it works</a><a href="/docs/">Docs</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <!-- ============ hero ============ -->
+      <section class="hero">
+        <div class="liquid" data-liquid-wrap>
+          <canvas data-liquid aria-hidden="true"></canvas>
+        </div>
+        <div class="gridlines" aria-hidden="true">
+          <div class="gridlines__inner">
+            <span></span><span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span><span></span>
+          </div>
+        </div>
+        <div class="hero__scrim" aria-hidden="true"></div>
+        <div class="hero__fade" aria-hidden="true"></div>
+
+        <div class="container hero__inner">
+          <div class="hero__copy">
+            <h1>
+              Leave the desk.
+              <em>Your agent has your number.</em>
+            </h1>
+
+            <p class="hero__lede">
+              Get a phone notification when your OpenCode agent asks a question, needs permission,
+              finishes, or fails.
+            </p>
+
+            <div class="hero__actions">
+              <a class="btn btn--ghost btn--lg" href="/install/">Get started</a>
+              <a class="linkarrow" href="/events/"><span>See what lands on the phone</span><span aria-hidden="true">→</span></a>
+            </div>
+          </div>
+
+          <div class="hero__artifact">
+            <div class="providerwall">
+              <ul class="providerwall__field" data-parallax aria-label="Compatible coding agents">
+                <li class="pmark pmark--opencode">
+                  <a class="pmark__card" href="https://opencode.ai" target="_blank" rel="noopener noreferrer" title="OpenCode">
+                    <img src="/assets/logos/opencode.svg" alt="OpenCode" width="30" height="30" />
+                  </a>
+                </li>
+                <li class="pmark pmark--antigravity">
+                  <a class="pmark__card" href="https://antigravity.google" target="_blank" rel="noopener noreferrer" title="Antigravity">
+                    <img src="/assets/logos/antigravity.png" alt="Antigravity" width="30" height="30" />
+                  </a>
+                </li>
+                <li class="pmark pmark--claude">
+                  <a class="pmark__card" href="https://code.claude.com" target="_blank" rel="noopener noreferrer" title="Claude Code">
+                    <img src="/assets/logos/claude-code.svg" alt="Claude Code" width="30" height="30" />
+                  </a>
+                </li>
+                <li class="pmark pmark--codex">
+                  <a class="pmark__card" href="https://openai.com/codex" target="_blank" rel="noopener noreferrer" title="Codex CLI">
+                    <img src="/assets/logos/codex.svg" alt="Codex CLI" width="30" height="30" />
+                  </a>
+                </li>
+                <li class="pmark pmark--grok">
+                  <a class="pmark__card" href="https://x.ai" target="_blank" rel="noopener noreferrer" title="Grok CLI">
+                    <img src="/assets/logos/grok.svg" alt="Grok CLI" width="30" height="30" />
+                  </a>
+                </li>
+                <li class="pmark pmark--cursor">
+                  <a class="pmark__card" href="https://cursor.com" target="_blank" rel="noopener noreferrer" title="Cursor">
+                    <img src="/assets/logos/cursor.svg" alt="Cursor" width="30" height="30" />
+                  </a>
+                </li>
+                <li class="pmark pmark--pi">
+                  <a class="pmark__card" href="https://pi.dev" target="_blank" rel="noopener noreferrer" title="Pi">
+                    <img src="/assets/logos/pi.svg" alt="Pi" width="30" height="30" />
+                  </a>
+                </li>
+                <li class="pmark pmark--command-code">
+                  <a class="pmark__card" href="https://commandcode.ai" target="_blank" rel="noopener noreferrer" title="Command Code">
+                    <img src="/assets/logos/command-code.svg" alt="Command Code" width="30" height="30" />
+                  </a>
+                </li>
+                <li class="pmark pmark--gemini">
+                  <a class="pmark__card" href="https://github.com/google-gemini/gemini-cli" target="_blank" rel="noopener noreferrer" title="Gemini CLI">
+                    <img src="/assets/logos/gemini.svg" alt="Gemini CLI" width="30" height="30" />
+                  </a>
+                </li>
+                <li class="pmark pmark--cline">
+                  <a class="pmark__card" href="https://cline.bot" target="_blank" rel="noopener noreferrer" title="Cline">
+                    <img src="/assets/logos/cline.svg" alt="Cline" width="30" height="30" />
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+    <footer class="footer"><div class="container"><div class="footer__base footer__base--solo"><span>MIT licensed</span><span><a href="/">Nudge</a> · <a href="/docs/">Documentation</a></span></div></div></footer>
+    <script src="/assets/js/site.js" defer></script>
+    <script src="/assets/js/liquid.js" defer></script>
+  </body>
+</html>

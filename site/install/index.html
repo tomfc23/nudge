@@ -1,0 +1,18 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Install — Nudge</title><meta name="description" content="Install Nudge and connect your OpenCode agent to your phone." /><meta name="color-scheme" content="dark" /><meta name="theme-color" content="#100e0b" />
+<link rel="icon" type="image/png" href="/assets/nudge-bird.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin /><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@10..48,75..100,200..800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" /><link rel="stylesheet" href="/assets/css/site.css" /></head><body>
+<a class="skip" href="#main">Skip to content</a>
+    <header class="nav" data-nav><div class="container nav__inner">
+      <a class="brand" href="/" aria-label="Nudge, home"><img class="brand__mark" src="/assets/nudge-bird.png" alt="" width="28" height="28" /><span class="brand__name">Nudge</span></a>
+      <nav class="nav__links" aria-label="Primary"><a href="/install/" aria-current="page">Install</a><a href="/events/">Notifications</a><a href="/how/">How it works</a><a href="/docs/">Docs</a></nav>
+    </div></header>
+<main id="main">
+<section class="section"><div class="container"><div class="sec-head"><span class="eyebrow">Install path</span><h1 class="h2">Hand it to your agent. <strong>Answer five questions.</strong></h1><p class="sec-sub">The installer provisions the ntfy server, wires the plugin, and sends a test push you confirm on your phone. Nothing runs until you have answered.</p></div>
+<p class="sec-sub">Run this in a terminal on the machine where your agent runs:</p>
+<div class="installbox mt-2" data-install><code class="installbox__cmd" data-install-cmd>curl -fsSL https://nudge.example.com/install.sh -o install.sh &amp;&amp; sh install.sh</code><button class="copybtn" type="button" data-copy>Copy</button><span class="sr-only" role="status" aria-live="polite" data-copy-status></span></div>
+<p class="muted small mt-2">Needs Docker (or Colima) and Node. The installer offers to install missing tools with your consent.</p><div class="row mt-2"><a class="btn btn--ghost" href="/INSTALL.md">Read the agent runbook</a><a class="btn btn--ghost" href="/install.sh">Inspect install.sh</a></div></div></section>
+</main>
+    <footer class="footer"><div class="container"><div class="footer__base footer__base--solo"><span>MIT licensed</span><span><a href="/">Nudge</a> · <a href="/docs/">Documentation</a></span></div></div></footer>
+<script src="/assets/js/site.js" defer></script>
+</body></html>

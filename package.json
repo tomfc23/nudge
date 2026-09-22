@@ -8,9 +8,11 @@
   "exports": "./index.ts",
   "files": [
     "src",
-    "README.md"
+    "README.md",
+    "site"
   ],
   "scripts": {
+    "site": "node scripts/serve-site.mjs",
     "typecheck": "tsc --noEmit",
     "test": "tsx scripts/test.ts"
   },

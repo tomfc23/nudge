@@ -13,7 +13,7 @@
 
 import type { Config } from "./config"
 
-export type EventKind = "question" | "finished" | "error" | "custom"
+export type EventKind = "question" | "finished" | "error" | "custom" | "permission"
 
 export interface NotifyInput {
   topic?: string
@@ -87,6 +87,7 @@ export class Notifier {
     if (kind === "question" && !cfg.question.enabled) return
     if (kind === "finished" && !cfg.finished.enabled) return
     if (kind === "error" && !cfg.error.enabled) return
+    if (kind === "permission" && !cfg.permission.enabled) return
 
     let message = input.message
 
@@ -144,6 +145,7 @@ export class Notifier {
     if (kind === "question") return ev.question.priority
     if (kind === "finished") return ev.finished.priority
     if (kind === "error") return ev.error.priority
+    if (kind === "permission") return ev.permission.priority
     return undefined
   }
 
@@ -152,6 +154,7 @@ export class Notifier {
     if (kind === "question") return ev.question.tags
     if (kind === "finished") return ev.finished.tags
     if (kind === "error") return ev.error.tags
+    if (kind === "permission") return ev.permission.tags
     return []
   }
 

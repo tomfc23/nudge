@@ -77,8 +77,8 @@ generated and persisted automatically on first run.
 
 4. Subscribe to that one topic in the app (the topic = the random-looking name; anyone who
    knows it can read it, which is why it has an unguessable suffix). Every event kind —
-   question, finished, error, custom — arrives on this single topic, distinguished by the
-   title prefix, emoji tag, and priority.
+   question, permission, finished, error, custom — arrives on this single topic, distinguished
+   by the title prefix, emoji tag, and priority.
 
 > **iOS background delivery:** set `upstream-base-url: "https://ntfy.sh"` on your ntfy server
 > (see next section). Your server then forwards a tiny wake-up signal (message ID only — never
@@ -134,12 +134,23 @@ Ask the agent: *"send me an ntfy test notification"* — it will use the `ntfy_n
 ## Access modes: local / Tailscale / Cloudflare
 
 The plugin talks plain HTTP to whatever `serverUrl` you give it, so all three ways of
-reaching a self-hosted ntfy server work out of the box. One script provisions any of them:
+reaching a self-hosted ntfy server work out of the box.
+
+**New install? Run the wizard** — `sh install.sh` asks five quick questions (access mode,
+config scope, which notifications, phone), installs missing tools *with your consent*,
+provisions the server, writes `opencode.json`, and sends a test push you confirm on the
+phone. Every question has an env override (`NTFY_MODE=cloudflare CF_HOSTNAME=... sh
+install.sh`), so an agent can drive the exact same wizard non-interactively — or just
+hand [`INSTALL.md`](./INSTALL.md) to your agent and answer its questions in chat
+(SPEC §14).
+
+For a single mode — or full control — one script provisions any of them:
 
 ```bash
 ./scripts/setup-server.sh local        # phone on the same Wi-Fi  → http://192.168.x.x
 ./scripts/setup-server.sh tailscale    # private tailnet          → https://<machine>.<tailnet>.ts.net
 ./scripts/setup-server.sh cloudflare   # public via CF Tunnel     → https://ntfy.example.com
+./scripts/setup-server.sh preflight [mode]  # readiness check only, makes no changes (--json for machines)
 ```
 
 The script is **idempotent** — re-run it with another mode to switch (then re-add the
@@ -175,18 +186,23 @@ explicitly in the options.
 
 ## What you get
 
-| Event | Trigger | Default priority |
-|---|---|---|
-| **Question** | Permission request, form, or the agent ends its turn asking you something (`?` or "should I…" phrasing) | urgent (5) |
-| **Finished** | Turn completes without a question | default (3) |
-| **Error** | Session/tool execution error (60 s cooldown per session) | high (4) |
-| **Custom** | Agent calls `ntfy_notify` | as requested |
+| Event | Trigger | Caption (what you see without opening anything) | Priority |
+|---|---|---|---|
+| **Question** ❓ | A form, or the agent ends its turn asking you something (`?` or "should I…" phrasing) | the question itself — the extracted question sentence, or the form's fields with their choices | urgent (5) |
+| **Permission** 🔒 | The agent needs your approval to continue | the structured ask, e.g. `read · permtest.env` | urgent (5) |
+| **Finished** ✅ | Turn completes without a question | telemetry, e.g. `Done in 1m 52s · 9 tools · 1 failed` | default (3) |
+| **Error** 🚨 | Session/tool execution error (60 s cooldown per session) | who failed + first line, e.g. `edit failed · Could not find oldString in …` | high (4) |
+| **Custom** 📣 | Agent calls `ntfy_notify` | whatever the agent wrote | as requested |
 
 All events arrive on your one subscribed topic — the title prefix and emoji tag
-(❓/✅/🚨) tell you which kind it is.
+(❓/🔒/✅/🚨) tell you which kind it is.
 
-Dedupe: a question suppresses a “finished” within 10 s (so you never get two pings for one
-moment), never the other way around.
+Captions are built to be useful *from the lock screen alone*: ≤ ~160–200 chars, no markdown
+noise, never cut mid-word.
+
+Dedupe: a question suppresses a “finished” within 10 s (never the other way around);
+permission asks and turn completions are separate moments and both fire. Errors collapse
+repeats into `(+N similar errors suppressed)` instead of paging you again.
 
 ## Configuration
 
@@ -207,7 +223,8 @@ All keys are optional — defaults shown:
           "question": { "enabled": true, "priority": "urgent", "tags": ["question"],
                         "idleMode": "heuristic", "patterns": ["\\\\bshould i\\\\b", "…"] },
           "finished": { "enabled": true, "priority": "default", "tags": ["heavy_check_mark"] },
-          "error":    { "enabled": true, "priority": "high", "tags": ["rotating_light"], "cooldownSec": 60 }
+          "error":    { "enabled": true, "priority": "high", "tags": ["rotating_light"], "cooldownSec": 60 },
+          "permission": { "enabled": true, "priority": "urgent", "tags": ["lock"] }
         },
 
         "dedupeWindowMs": 10000,
@@ -232,6 +249,8 @@ All keys are optional — defaults shown:
   - `"heuristic"` (default): trailing `?` or a question phrase anywhere → question.
   - `"always"`: every turn-end is a question ping. `"off"`: never.
 - **`events.question.patterns`** – replaces the built-in phrase list (case-insensitive regexes).
+- **`events.permission.*`** – permission requests are their own kind (default `urgent`, tag `lock`)
+  with an independent toggle: an agent blocked waiting on you is a different signal from a question.
 
 ## The `ntfy_notify` tool
 
@@ -258,7 +277,7 @@ It skips the dedupe rules (deliberate sends always go through).
 ```bash
 npm install
 npm run typecheck
-npm test          # 39 tests: classifier, config/token chain, access modes, end-to-end event→publish flow, dedupe/sharing, tool
+npm test          # 87 tests: classifier, captions, config/token chain, access modes, end-to-end event→publish flow, dedupe/sharing, tool, setup-server.sh + install.sh + uninstall.sh + UNINSTALL.md contracts
 ```
 
 Design rationale and decision log: [SPEC.md](./SPEC.md).
