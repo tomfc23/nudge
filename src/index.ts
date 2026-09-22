@@ -25,6 +25,7 @@ export default Plugin.define({
     // concurrently in one process — instance-local maps would publish every
     // event once per loaded copy (observed: 3 notifications per question).
     const notifier = new Notifier(config, undefined, sharedState())
+    log("dedupe: process-shared across plugin instances")
     const controller = new AbortController()
 
     // Fire the event watcher; it stops when the plugin unloads.
