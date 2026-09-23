@@ -1,6 +1,6 @@
 {
   "name": "nudge-agent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Manage a Nudge install: phone notifications for OpenCode and Codex.",
   "type": "module",
   "license": "MIT",
