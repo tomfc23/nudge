@@ -23,7 +23,8 @@ without the verification table.
   kept on re-runs). A *mode switch* requires the phone to **re-subscribe** —
   the iOS wake hash is `sha256(base-url + "/" + topic)`.
 - **Never:** `pkill` cloudflared (persistence is detection-based), overwrite
-  unrelated keys in `opencode.json`, or regenerate an existing `baseTopic`.
+  unrelated keys in `opencode.json`, or regenerate an existing `baseTopic`
+  unless the user explicitly sets `NTFY_TOPIC`.
 - **Consent:** ask the user before `brew install` or browser logins unless
   they already said yes. Nothing runs before the questions are answered.
 
@@ -34,7 +35,7 @@ without the verification table.
 | 1 | **How should the phone reach the server?** local (same Wi-Fi) / tailscale (private VPN) / cloudflare (public URL) | `NTFY_MODE` |
 | 1a | cloudflare only: **public hostname?** (e.g. `ntfy.example.com`) | `CF_HOSTNAME` |
 | 1b | local only: show the detected LAN IP from preflight and confirm it | `LAN_IP` |
-| 2 | **Which agents?** OpenCode, Command Code, Pi, Hermes (select any combination) | `NTFY_HARNESSES` (csv of selected ids: `opencode,command-code,pi,hermes`) |
+| 2 | **Which agents?** OpenCode, Codex, Command Code, Pi, Hermes (select any combination) | `NTFY_HARNESSES` (csv of selected ids: `opencode,codex,command-code,pi,hermes`) |
 | 3 | **Where to configure?** global (all projects) or project (current project only) | `NTFY_SCOPE` |
 | 4 | **Which notifications?** all five (recommended) or which to disable: question, permission, finished, error, custom | `NTFY_EVENTS` (`all` or csv of the **enabled** kinds) |
 | 5 | **Which phone?** ios / android / none | `NTFY_PHONE` |
@@ -90,7 +91,7 @@ Carry the final values forward: `CF_HOSTNAME`, `NTFY_PORT`, `LAN_IP`.
 drops every env var (put comments on their own line, or don't use any):
 
 ```bash
-NTFY_MODE=cloudflare CF_HOSTNAME=ntfy.example.com NTFY_HARNESSES=opencode,command-code,pi,hermes NTFY_SCOPE=global NTFY_EVENTS=all NTFY_PHONE=ios NTFY_INSTALL_DEPS=1 NTFY_SKIP_CONFIRM=1 sh install.sh
+NTFY_MODE=cloudflare CF_HOSTNAME=ntfy.example.com NTFY_HARNESSES=opencode,codex,command-code,pi,hermes NTFY_SCOPE=global NTFY_EVENTS=all NTFY_PHONE=ios NTFY_INSTALL_DEPS=1 NTFY_SKIP_CONFIRM=1 sh install.sh
 ```
 
 Env values (from Q1-Q6): `NTFY_MODE` = local|tailscale|cloudflare ·
@@ -100,7 +101,11 @@ or csv of the enabled kinds · `NTFY_PHONE` = ios|android|none ·
 `NTFY_INSTALL_DEPS=1` only after the user said yes in Q6 · `NTFY_SKIP_CONFIRM=1`
 — you own the phone-confirmation in chat (Steps 3-4) · optional
 `NTFY_CONFIG_FILE=<path>` = exact config file, overrides the scope (only for
-dry runs into a scratch file — never needed for a normal install).
+dry runs into a scratch file — never needed for a normal install). Set
+`NTFY_TOPIC=<topic>` to move an existing installation to a different topic;
+update the subscription in the ntfy app to match. Fresh topics start with `nudge-`.
+When Codex is selected, open `/hooks` in Codex and trust the Nudge `Stop` and
+`PermissionRequest` hooks after installation.
 
 - Exit **0** → continue. Record from its output, for Step 5's table: the
   provisioning status and the smoke line
@@ -157,7 +162,7 @@ Set the three values from Step 3's output (its labels `serverUrl` / `baseTopic`
 
 ```bash
 SERVER_URL="https://ntfy.example.com"
-TOPIC="opencode-xxxxxxxxxx"
+TOPIC="nudge-xxxxxxxxxx"
 TOKEN="tk_..."
 curl -s -o /dev/null -w '%{http_code}\n' -m 10 \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \

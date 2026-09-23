@@ -1,5 +1,10 @@
 # UNINSTALL.md — have your agent uninstall `opencode-ntfy`
 
+This runbook removes the OpenCode integration and server. For Codex hooks, run
+`node scripts/configure-codex.mjs --remove ~/.codex/hooks.json ~/.codex/nudge.json`
+from this checkout (use the project's `.codex` paths for a project install).
+Command Code, Pi, and Hermes removal paths are in `README.md`.
+
 Give this file (or its contents) to a coding agent with shell access — OpenCode,
 Claude Code, or similar. It is a complete runbook: the agent asks which of three
 fixed levels to remove, surveys what is installed (**read-only first**), takes

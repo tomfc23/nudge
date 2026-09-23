@@ -144,7 +144,7 @@ export async function readConfig(options: PluginOptions, storage: StorageLike): 
     if (typeof stored === "string" && stored) {
       baseTopic = stored
     } else {
-      baseTopic = `opencode-${randomUUID().replace(/-/g, "").slice(0, 10)}`
+      baseTopic = `nudge-${randomUUID().replace(/-/g, "").slice(0, 10)}`
       await storage.set("baseTopic", baseTopic).catch(() => undefined)
       info.push(`generated topic base "${baseTopic}" (persisted)`)
     }

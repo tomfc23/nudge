@@ -264,7 +264,7 @@ async function main() {
     const storage = fakeStorage()
     const first = await readConfig({ serverUrl: "http://t" }, storage)
     const generated = first.config!.topic
-    assert.match(generated, /^opencode-[a-f0-9]{10}$/)
+    assert.match(generated, /^nudge-[a-f0-9]{10}$/)
     const second = await readConfig({ serverUrl: "http://t" }, storage)
     assert.equal(second.config!.topic, generated)
     assert.equal(storage.map.get("baseTopic"), generated)
@@ -741,7 +741,7 @@ async function main() {
   const inst = fileURLToPath(new URL("../install.sh", import.meta.url))
   // Neutralize any wizard env from the outer shell, then apply per-test overrides.
   const cleanEnv = () => ({
-    NTFY_MODE: "", NTFY_HARNESSES: "", NTFY_SCOPE: "", NTFY_EVENTS: "", NTFY_PHONE: "",
+    NTFY_MODE: "", NTFY_HARNESSES: "", NTFY_SCOPE: "", NTFY_EVENTS: "", NTFY_PHONE: "", NTFY_TOPIC: "",
     NTFY_INSTALL_DEPS: "", NTFY_SKIP_CONFIRM: "", CF_HOSTNAME: "", NTFY_CONFIG_FILE: "",
   })
   const runInst = (args: string[] = [], env: Record<string, string> = {}, input?: string) =>
@@ -778,6 +778,12 @@ async function main() {
     assert.match(r.stderr, /unknown harness/)
   })
 
+  await test("invalid NTFY_TOPIC fails fast → exit 2", () => {
+    const r = runInst([], { NTFY_TOPIC: "bad/topic" }, "")
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /NTFY_TOPIC must use/)
+  })
+
   await test("invalid NTFY_EVENTS kind fails fast → exit 2", () => {
     const r = runInst([], { NTFY_EVENTS: "question,bogus" }, "")
     assert.equal(r.status, 2)
@@ -800,7 +806,7 @@ async function main() {
   await test("INSTALL.md documents the full env contract (drift guard)", () => {
     const md = readFileSync(fileURLToPath(new URL("../INSTALL.md", import.meta.url)), "utf8")
     for (const s of [
-      "NTFY_MODE", "NTFY_SCOPE", "NTFY_EVENTS", "NTFY_PHONE", "NTFY_INSTALL_DEPS",
+      "NTFY_MODE", "NTFY_SCOPE", "NTFY_EVENTS", "NTFY_PHONE", "NTFY_INSTALL_DEPS", "NTFY_TOPIC",
       "NTFY_SKIP_CONFIRM", "CF_HOSTNAME", "NTFY_PORT", "LAN_IP", "NTFY_CONFIG_FILE",
       "setup-server.sh preflight", "sh install.sh",
       "`0` ok · `2` usage/bad input · `3` missing",  // exit-code contract
@@ -830,7 +836,7 @@ async function main() {
       const archive = Buffer.from(await response!.arrayBuffer())
       const listed = spawnSync("tar", ["-tzf", "-"], { input: archive, encoding: "utf8" })
       assert.equal(listed.status, 0, listed.stderr)
-      for (const file of ["index.ts", "package-lock.json", "src/index.ts", "scripts/setup-server.sh", "scripts/install-harnesses.mjs", "adapters/command-code.ts", "adapters/pi.ts", "adapters/hermes/plugin.yaml"]) {
+      for (const file of ["index.ts", "package-lock.json", "src/index.ts", "scripts/setup-server.sh", "scripts/install-harnesses.mjs", "scripts/configure-codex.mjs", "scripts/codex-hook.mjs", "adapters/command-code.ts", "adapters/pi.ts", "adapters/hermes/plugin.yaml"]) {
         assert.ok(listed.stdout.split("\n").includes(file), `archive missing ${file}`)
       }
       const installer = await (await fetch(`http://127.0.0.1:${port}/install.sh`)).text()

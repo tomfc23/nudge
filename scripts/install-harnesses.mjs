@@ -15,7 +15,8 @@ let config = {}
 if (existsSync(configFile)) config = JSON.parse(readFileSync(configFile, "utf8"))
 config.serverUrl = process.env.NTFY_SERVER_URL
 config.token = process.env.NTFY_TOKEN
-config.baseTopic = selected.includes("opencode") ? process.env.NTFY_TOPIC : (config.baseTopic || process.env.NTFY_TOPIC)
+config.baseTopic = selected.includes("opencode") || selected.includes("codex") || process.env.NTFY_FORCE_TOPIC === "1"
+  ? process.env.NTFY_TOPIC : (config.baseTopic || process.env.NTFY_TOPIC)
 const enabled = process.env.NTFY_EVENTS === "all" ? ["question", "permission", "finished", "error", "custom"] : process.env.NTFY_EVENTS.split(",")
 config.events ||= {}
 for (const kind of ["question", "permission", "finished", "error", "custom"]) {

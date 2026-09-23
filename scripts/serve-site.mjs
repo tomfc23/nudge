@@ -17,7 +17,7 @@ import { spawn } from "node:child_process";
 
 const repo = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const root = join(repo, "site");
-const PACKAGE_FILES = ["index.ts", "install.sh", "package.json", "package-lock.json", "src", "adapters", "scripts/setup-server.sh", "scripts/install-harnesses.mjs", "scripts/uninstall.sh", "README.md", "INSTALL.md", "UNINSTALL.md", "LICENSE"];
+const PACKAGE_FILES = ["index.ts", "install.sh", "package.json", "package-lock.json", "src", "adapters", "scripts/setup-server.sh", "scripts/install-harnesses.mjs", "scripts/configure-codex.mjs", "scripts/codex-hook.mjs", "scripts/uninstall.sh", "README.md", "INSTALL.md", "UNINSTALL.md", "LICENSE"];
 
 const SHARED = {
   "/install.sh": join(repo, "install.sh"),

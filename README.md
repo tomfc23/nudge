@@ -1,8 +1,8 @@
 # opencode-ntfy
 
-Get [ntfy](https://ntfy.sh) push notifications on your phone when OpenCode, Command Code, Pi, or Hermes
-needs you — **questions & permission requests**, **finished tasks**, and **errors** — plus an
-`ntfy_notify` tool so the agent itself can ping you.
+Get [ntfy](https://ntfy.sh) push notifications on your phone when OpenCode, Codex, Command Code, Pi, or Hermes
+needs you — **questions & permission requests**, **finished tasks**, and **errors**. OpenCode,
+Command Code, Pi, and Hermes also get an `ntfy_notify` tool for custom pings.
 
 Works with your **self-hosted ntfy server** and the official **ntfy iOS/Android app**.
 
@@ -72,7 +72,7 @@ generated and persisted automatically on first run.
 
 ```
 [ntfy] server: http://your-server-ip
-[ntfy] subscribe in your ntfy app → server http://your-server-ip , topic: opencode-1a2b3c4d5e
+[ntfy] subscribe in your ntfy app → server http://your-server-ip , topic: nudge-1a2b3c4d5e
 ```
 
 4. Subscribe to that one topic in the app (the topic = the random-looking name; anyone who
@@ -151,7 +151,10 @@ install.sh`), so an agent can drive the exact same wizard non-interactively — 
 hand [`INSTALL.md`](./INSTALL.md) to your agent and answer its questions in chat
 (SPEC §14).
 
-Select multiple agents with `NTFY_HARNESSES=opencode,command-code,pi,hermes`.
+Select multiple agents with `NTFY_HARNESSES=opencode,codex,command-code,pi,hermes`.
+Codex uses `Stop` and `PermissionRequest` hooks. After installation, open `/hooks`
+in Codex and trust the Nudge hooks. Codex sends finished, question, and permission
+notifications.
 The installer places a [Command Code mod](https://commandcode.ai/docs/mods), a
 [Pi extension](https://pi.dev/docs/latest/extensions), and a
 [Hermes plugin](https://hermes-agent.nousresearch.com/docs/user-guide/features/plugins)
@@ -165,7 +168,9 @@ Pi has no built-in permission prompt event. Hermes reports approval requests.
 To remove these integrations, delete their `ntfy.ts` loader in the corresponding
 mods/extensions directory, run `hermes plugins disable ntfy` and remove
 `~/.hermes/plugins/ntfy`, then
-remove the matching ntfy-archive config file. The existing `UNINSTALL.md`
+remove the matching ntfy-archive config file. For Codex, run
+`node scripts/configure-codex.mjs --remove ~/.codex/hooks.json ~/.codex/nudge.json`
+(use the project's `.codex` paths for a project install). The existing `UNINSTALL.md`
 covers OpenCode and the server.
 
 For a single mode — or full control — one script provisions any of them:
@@ -240,7 +245,7 @@ All keys are optional — defaults shown:
       "options": {
         "serverUrl": "http://your-server-ip",
         "token": "{env:NTFY_TOKEN}",
-        "baseTopic": "opencode-mytopic",
+        "baseTopic": "nudge-mytopic",
         "accessMode": "auto",
 
         "events": {

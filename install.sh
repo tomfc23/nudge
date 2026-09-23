@@ -19,7 +19,8 @@
 # Question env overrides:
 #   NTFY_MODE         local | tailscale | cloudflare    how the phone reaches the server
 #   NTFY_SCOPE        global | project                  which opencode.json to write
-#   NTFY_HARNESSES    csv: opencode,command-code,pi,hermes  harnesses to wire
+#   NTFY_HARNESSES    csv: opencode,codex,command-code,pi,hermes  harnesses to wire
+#   NTFY_TOPIC        explicit topic (also changes an existing installation)
 #   NTFY_EVENTS       all | csv of ENABLED kinds        question,permission,finished,error,custom
 #   NTFY_PHONE        ios | android | none              tailors the final instructions
 #   NTFY_INSTALL_DEPS 1 (auto-yes) | 0 (auto-no)        answers the Homebrew/log-in consents
@@ -56,7 +57,7 @@ opencode-ntfy installer
 
 Questions: access mode (local|tailscale|cloudflare) -> harnesses -> config scope (global|project)
 -> which notifications (all or per-kind) -> phone OS -> (preflight fixes deps).
-Env overrides: NTFY_MODE NTFY_HARNESSES NTFY_SCOPE NTFY_EVENTS NTFY_PHONE NTFY_INSTALL_DEPS
+Env overrides: NTFY_MODE NTFY_HARNESSES NTFY_SCOPE NTFY_EVENTS NTFY_PHONE NTFY_INSTALL_DEPS NTFY_TOPIC
 NTFY_SKIP_CONFIRM CF_HOSTNAME NTFY_PORT LAN_IP NTFY_CONFIG_FILE NTFY_SETUP_DIR
 NTFY_PLUGIN_DIR NTFY_SITE_URL NTFY_REPO_URL
 
@@ -135,9 +136,14 @@ if [ -n "${NTFY_HARNESSES:-}" ]; then
   case "$NTFY_HARNESSES" in ,*|*,|*,,*) die 2 "NTFY_HARNESSES must be a comma-separated list without empty entries" ;; esac
   OLDIFS="$IFS"; IFS=","
   for h in $NTFY_HARNESSES; do
-    case "$h" in opencode|command-code|pi|hermes) ;; *) IFS="$OLDIFS"; die 2 "NTFY_HARNESSES: unknown harness '$h'" ;; esac
+    case "$h" in opencode|codex|command-code|pi|hermes) ;; *) IFS="$OLDIFS"; die 2 "NTFY_HARNESSES: unknown harness '$h'" ;; esac
   done
   IFS="$OLDIFS"
+fi
+if [ -n "${NTFY_TOPIC:-}" ]; then
+  case "$NTFY_TOPIC" in *[!A-Za-z0-9_-]* ) die 2 "NTFY_TOPIC must use letters, numbers, _ or -" ;; esac
+  [ "${#NTFY_TOPIC}" -le 64 ] || die 2 "NTFY_TOPIC must be at most 64 characters"
+  export NTFY_FORCE_TOPIC=1
 fi
 if [ -n "${NTFY_EVENTS:-}" ] && [ "$NTFY_EVENTS" != "all" ]; then
   OLDIFS="$IFS"; IFS=","
@@ -381,7 +387,7 @@ if [ -n "${NTFY_HARNESSES:-}" ]; then
   HARNESSES="$NTFY_HARNESSES"
 else
   HARNESSES=""
-  for h in opencode command-code pi hermes; do
+  for h in opencode codex command-code pi hermes; do
     hdef=n; [ "$h" = opencode ] && hdef=y
     if ask_yn "  + $h?" "$hdef"; then HARNESSES="${HARNESSES:+$HARNESSES,}$h"; fi
   done
@@ -478,7 +484,26 @@ ok "server ready: $SERVER_URL"
 
 # ------------------------------------------------------------------ write harness config
 say "writing plugin config"
-TOPIC_PROPOSED="$(node -e 'process.stdout.write("opencode-"+require("crypto").randomBytes(5).toString("hex"))')"
+if [ "$SCOPE" = global ]; then CODEX_DIR="${CODEX_HOME:-$HOME/.codex}"; else CODEX_DIR="$PWD/.codex"; fi
+CODEX_HOOKS="$CODEX_DIR/hooks.json"
+CODEX_CONFIG="$CODEX_DIR/nudge.json"
+TOPIC_PROPOSED="$(node -e '
+var fs=require("fs"), path=require("path"), crypto=require("crypto"), topic=process.env.NTFY_TOPIC || "";
+function read(file) { try { return JSON.parse(fs.readFileSync(file,"utf8")); } catch { return {}; } }
+var selected=(process.argv[3] || "").split(",");
+if (!topic && selected.includes("codex")) topic=read(process.argv[2]).topic || "";
+if (!topic) {
+  var c=read(process.argv[1]);
+  var entries=[...(c.plugin || []).map(e=>({path:e[0],options:e[1]})),...(c.plugins || []).map(e=>({path:e.package,options:e.options}))];
+  topic=entries.find(e=>typeof e.path==="string" && (e.path===process.argv[4] || path.basename(e.path)==="opencode-ntfy"))?.options?.baseTopic || "";
+}
+if (!topic) {
+  var home=process.env.HOME, cwd=process.cwd(), key=crypto.createHash("sha256").update(cwd).digest("hex");
+  var file=process.argv[5]==="project" ? path.join(home,".config/ntfy-archive/projects",key+".json") : path.join(home,".config/ntfy-archive/config.json");
+  topic=read(file).baseTopic || "";
+}
+process.stdout.write(topic || "nudge-"+crypto.randomBytes(5).toString("hex"));
+' "$CONFIG_FILE" "$CODEX_CONFIG" "$HARNESSES" "$REPO_DIR" "$SCOPE")"
 export NTFY_W="$SERVER_URL|$TOKEN|$TOPIC_PROPOSED|$EV_ALL|$EV_LIST"
 TOPIC="$TOPIC_PROPOSED"
 case ",$HARNESSES," in
@@ -507,7 +532,7 @@ if (!entry) {
 var opts = form === "plugin" ? (entry[1] = entry[1] || {}) : (entry.options = entry.options || {});
 opts.serverUrl = serverUrl;
 opts.token = token;
-opts.baseTopic = (typeof opts.baseTopic === "string" && opts.baseTopic) ? opts.baseTopic : proposed;
+opts.baseTopic = proposed;
 var ev = (opts.events && typeof opts.events === "object") ? opts.events : {};
 ALL.forEach(function (k) {
   if (enabled.indexOf(k) === -1) {
@@ -543,7 +568,16 @@ case "$HARNESSES" in
     case ",$HARNESSES," in *,opencode,*) ;; *) CONFIG_FILE="${INSTALL_OUTPUT##*config: }"; ok "config written: $CONFIG_FILE" ;; esac
     ;;
 esac
-ok "topic (kept if this was installed before): $TOPIC"
+ok "topic: $TOPIC"
+case ",$HARNESSES," in
+  *,codex,*)
+    [ -f "$REPO_DIR/scripts/configure-codex.mjs" ] && [ -f "$REPO_DIR/scripts/codex-hook.mjs" ] || die 3 "Codex support missing from $REPO_DIR"
+    node "$REPO_DIR/scripts/configure-codex.mjs" "$CODEX_HOOKS" "$CODEX_CONFIG" "$REPO_DIR/scripts/codex-hook.mjs" "$TOPIC" || die 3 "writing Codex hooks failed"
+    ok "Codex hooks written: $CODEX_HOOKS"
+    info "Codex config: $CODEX_CONFIG"
+    info "in Codex, open /hooks and trust the Nudge Stop and PermissionRequest hooks"
+    ;;
+esac
 
 # ------------------------------------------------------------------ phone instructions
 cat <<EOF

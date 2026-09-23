@@ -14,8 +14,9 @@
   "scripts": {
     "site": "node scripts/serve-site.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "tsx scripts/test.ts",
-    "test:harnesses": "node --import tsx scripts/test-harnesses.ts"
+    "test": "tsx scripts/test.ts && node scripts/test-codex.mjs && node --import tsx scripts/test-harnesses.ts",
+    "test:harnesses": "node --import tsx scripts/test-harnesses.ts",
+    "test:codex": "node scripts/test-codex.mjs"
   },
   "dependencies": {
     "@opencode/plugin": "^2.0.12"

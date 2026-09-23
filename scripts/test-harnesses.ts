@@ -35,6 +35,12 @@ try {
   })
   assert.equal(rerun.status, 0, rerun.stderr)
   assert.equal(JSON.parse(readFileSync(configPath, "utf8")).baseTopic, "test-topic", "rerun keeps the phone topic")
+  const moved = spawnSync(process.execPath, [join(root, "scripts/install-harnesses.mjs"), root, "project", "command-code,pi"], {
+    encoding: "utf8",
+    env: { ...process.env, HOME: home, NTFY_PROJECT_DIR: project, NTFY_SERVER_URL: "http://ntfy.example", NTFY_TOKEN: "test-token", NTFY_TOPIC: "nudge-new", NTFY_FORCE_TOPIC: "1", NTFY_EVENTS: "all" },
+  })
+  assert.equal(moved.status, 0, moved.stderr)
+  assert.equal(JSON.parse(readFileSync(configPath, "utf8")).baseTopic, "nudge-new", "explicit topic moves the subscription")
 
   const global = spawnSync(process.execPath, [join(root, "scripts/install-harnesses.mjs"), root, "global", "command-code,pi"], {
     encoding: "utf8",
@@ -62,7 +68,7 @@ try {
   await piTool.execute("id", { message: "pi custom" })
   await new Promise((resolve) => setTimeout(resolve, 25))
   assert.deepEqual(events.map((e) => e.title), ["Finished: project", "Permission denied: project", "ntfy", "Question: project", "ntfy"])
-  assert.ok(events.every((e) => e.topic === "test-topic"))
+  assert.ok(events.every((e) => e.topic === "nudge-new"))
 
   const py = spawnSync("python3", ["-c", `import importlib.util, json
 spec=importlib.util.spec_from_file_location('ntfy_hermes', ${JSON.stringify(join(root, "adapters/hermes/__init__.py"))})
