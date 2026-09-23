@@ -207,6 +207,33 @@ If detection can't see your intent (e.g. the plugin publishes via `http://127.0.
 while the phone uses a tunnel URL), set `"accessMode": "local" | "tailscale" | "cloudflare"`
 explicitly in the options.
 
+## Managing Nudge
+
+Already installed? The `nudge-agent` CLI wraps the scripts above, so you don't have to
+remember paths:
+
+```bash
+npm install -g nudge-agent      # or: brew tap tomfc23/nudge && brew install nudge-agent
+```
+
+| Command | What it does |
+|---|---|
+| `nudge-agent install` | runs the wizard (same as `sh install.sh`) |
+| `nudge-agent status [--json]` | what is wired up right now — per harness, server reachability, and whether Codex has actually *trusted* the hooks |
+| `nudge-agent update [--dry-run]` | `git pull` for a checkout, re-runs the installer for an archive install |
+| `nudge-agent add <opencode\|codex>` | wires one more harness, copying `serverUrl`/`token`/`topic` from the harness already configured |
+| `nudge-agent remove <opencode\|codex>` | unwires one harness — the other and the server are untouched |
+| `nudge-agent uninstall [--level 1\|2\|3]` | delegates to `scripts/uninstall.sh`; level 3 also wipes server data and needs `--yes` |
+
+Exit codes match the scripts (`0` ok · `2` usage/input · `3` missing or partial · `4` conflict
+· `5` runtime). The CLI is only a dispatcher — it calls the scripts in the plugin
+directory, so `install.sh` / `setup-server.sh` / `uninstall.sh` stay the single
+implementation, and nothing but the CLI itself is published anywhere.
+
+By default the installer is fetched from `raw.githubusercontent.com/tomfc23/nudge/main` and the
+plugin is cloned from this repo. Set `NTFY_SITE_URL` to use a website's `install.sh` +
+`plugin.tar.gz` instead.
+
 ## What you get
 
 | Event | Trigger | Caption (what you see without opening anything) | Priority |
@@ -300,5 +327,5 @@ It skips the dedupe rules (deliberate sends always go through).
 ```bash
 npm install
 npm run typecheck
-npm test          # OpenCode event flow, installer/uninstaller contracts, Codex hooks
+npm test          # OpenCode event flow, installer/uninstaller contracts, Codex hooks, nudge-agent CLI
 ```
