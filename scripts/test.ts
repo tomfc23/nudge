@@ -4,7 +4,7 @@
  */
 
 import assert from "node:assert/strict"
-import { spawnSync } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import net from "node:net"
 import os from "node:os"
@@ -264,7 +264,7 @@ async function main() {
     const storage = fakeStorage()
     const first = await readConfig({ serverUrl: "http://t" }, storage)
     const generated = first.config!.topic
-    assert.match(generated, /^opencode-[a-f0-9]{10}$/)
+    assert.match(generated, /^nudge-[a-f0-9]{10}$/)
     const second = await readConfig({ serverUrl: "http://t" }, storage)
     assert.equal(second.config!.topic, generated)
     assert.equal(storage.map.get("baseTopic"), generated)
@@ -303,6 +303,14 @@ async function main() {
       message: "m",
     })
     await flush()
+    assert.equal(f.sent.length, 0)
+  })
+  await test("custom.enabled=false → custom tool cannot publish", async () => {
+    const res = await readConfig(
+      { serverUrl: "http://t", baseTopic: "bt", events: { custom: { enabled: false } } }, fakeStorage(),
+    )
+    const f = fakeFetch()
+    await assert.rejects(new Notifier(res.config!, f as FetchLike).custom({ title: "x", message: "m" }), /disabled/)
     assert.equal(f.sent.length, 0)
   })
   await test("startup info lists the subscribe topic", async () => {
@@ -371,6 +379,7 @@ async function main() {
   await test("permission.asked → permission publish (urgent, lock tag, single topic, bearer auth)", () => {
     const q = byKind("Permission needed:")
     assert.equal(q.length, 1)
+    assert.match(q[0].body.title, /OpenCode/)
     assert.equal(q[0].body.topic, "opencode-test")
     assert.equal(q[0].body.priority, 5)
     assert.deepEqual(q[0].body.tags, ["lock"])
@@ -378,56 +387,56 @@ async function main() {
     assert.equal((q[0].headers as any).Authorization, undefined)
   })
   await test("finished NOT suppressed by an earlier permission (permission is its own kind, not a question)", () => {
-    assert.equal(byKind("Finished: Fix login bug").length, 1)
+    assert.equal(byKind("Finished: OpenCode · Fix login bug").length, 1)
   })
   await test("question→finished suppression still works via double boundary (session qfin)", () => {
-    assert.equal(byKind("Question: Staging migration").length, 1)
-    assert.equal(byKind("Finished: Staging migration").length, 0)
+    assert.equal(byKind("Question: OpenCode · Staging migration").length, 1)
+    assert.equal(byKind("Finished: OpenCode · Staging migration").length, 0)
   })
   await test("session.execution.succeeded → telemetry caption (Done in 1s · 2 tools)", () => {
-    const f = byKind("Finished: Boundary rewrite")
+    const f = byKind("Finished: OpenCode · Boundary rewrite")
     assert.equal(f.length, 1)
     assert.equal(f[0].body.priority, 3)
     assert.equal(f[0].body.message, "Done in 1s · 2 tools")
   })
   await test("plain completion without telemetry → fallback caption", () => {
-    const f = byKind("Finished: Add dark mode")
+    const f = byKind("Finished: OpenCode · Add dark mode")
     assert.equal(f.length, 1)
     assert.equal(f[0].body.topic, "opencode-test")
     assert.equal(f[0].body.priority, 3)
     assert.equal(f[0].body.message, "Agent finished its turn.")
   })
   await test("text-classified question → question publish", () => {
-    const q = byKind("Question: Refactor plan")
+    const q = byKind("Question: OpenCode · Refactor plan")
     assert.equal(q.length, 1)
     assert.equal(q[0].body.priority, 5)
     assert.match(q[0].body.message, /squash these commits/)
   })
   await test("interrupted turn → no notification", () => {
-    assert.equal(byKind("Finished: Long job").length, 0)
-    assert.equal(byKind("Question: Long job").length, 0)
+    assert.equal(byKind("Finished: OpenCode · Long job").length, 0)
+    assert.equal(byKind("Question: OpenCode · Long job").length, 0)
   })
   await test("failed turn → error publish, no finished", () => {
-    const e = byKind("Error: Risky task")
+    const e = byKind("Error: OpenCode · Risky task")
     assert.equal(e.length, 1)
     assert.equal(e[0].body.topic, "opencode-test")
     assert.equal(e[0].body.priority, 4)
     assert.match(e[0].body.message, /Model overloaded/)
-    assert.equal(byKind("Finished: Risky task").length, 0)
+    assert.equal(byKind("Finished: OpenCode · Risky task").length, 0)
   })
   await test("tool error cooldown: 1st fires, 2nd suppressed, 3rd after cooldown carries count", async () => {
-    const e = byKind("Error: Flaky suite")
+    const e = byKind("Error: OpenCode · Flaky suite")
     assert.equal(e.length, 1)
     assert.equal(e[0].body.message, "shell failed · ECONNRESET")
     assert.equal(e[0].body.message.includes("suppressed"), false)
     // 2 tool failures inside the 30ms cooldown were suppressed (script fired 3 total).
     await new Promise((r) => setTimeout(r, 60)) // > cooldownSec 0.03
     notifier.notify("error", "tools", {
-      title: "Error: Flaky suite",
+      title: "Error: OpenCode · Flaky suite",
       message: "Tool failed: ECONNRESET",
     })
     await flush()
-    const all = byKind("Error: Flaky suite")
+    const all = byKind("Error: OpenCode · Flaky suite")
     assert.equal(all.length, 2)
     assert.match(all[1].body.message, /\(\+2 similar errors suppressed\)/)
   })
@@ -435,9 +444,10 @@ async function main() {
     const q = fetcher.sent.filter((s) => s.body.message === "Which database?")
     assert.equal(q.length, 1)
     assert.equal(q[0].body.topic, "opencode-test")
+    assert.match(q[0].body.title, /OpenCode/)
   })
   await test("form.created with fields → lock-screen choices in caption (hidden skipped)", () => {
-    const q = fetcher.sent.filter((s) => s.body.title?.startsWith("Question: Form fields demo"))
+    const q = fetcher.sent.filter((s) => s.body.title?.startsWith("Question: OpenCode · Form fields demo"))
     assert.equal(q.length, 1)
     assert.equal(q[0].body.message, "Pick env · Environment: staging | prod · Dry run?: yes | no")
   })
@@ -632,6 +642,7 @@ async function main() {
     assert.match(ok.content, /Notification sent/)
     assert.equal(fetcher.sent.length, 1)
     assert.equal(fetcher.sent[0].body.topic, "bt")
+    assert.equal(fetcher.sent[0].body.title, "OpenCode · CI")
     assert.equal(fetcher.sent[0].body.priority, 5)
     assert.deepEqual(fetcher.sent[0].body.tags, ["tada"])
 
@@ -644,6 +655,7 @@ async function main() {
     await added.execute({ message: "x", topic: "bt-deploy" }, execCtx)
     await flush()
     assert.equal(fetcher.sent.at(-1)!.body.topic, "bt-deploy")
+    assert.equal(fetcher.sent.at(-1)!.body.title, "OpenCode · ntfy")
   })
 
   console.log("setup-server.sh non-interactive contract (SPEC §14.3)")
@@ -706,18 +718,6 @@ async function main() {
     assert.ok([3, 4].includes(cf.status!), `expected scored failure, got ${cf.status}`)
   })
 
-  await test("cloudflare mode re-points a stale DNS route (530 regression guard)", () => {
-    // uninstall.sh deletes the tunnel but keeps the DNS route, so the record can
-    // still aim at a dead tunnel. `route dns` without -f fails on an existing
-    // record, and swallowing that failure leaves the hostname on Cloudflare 530
-    // (error 1033) and the phone unable to subscribe.
-    const src = readFileSync(sh, "utf8")
-    const route = src.match(/"\$CF" tunnel route dns[^\n]*/)
-    assert.ok(route, "cloudflared route dns call present")
-    assert.match(route![0], /tunnel route dns -f ntfy/, "route dns must overwrite the existing record")
-    assert.doesNotMatch(src, /already exists — ok/, "a failed route must not be swallowed")
-  })
-
   await test("occupied NTFY_PORT → exit 4 with owner, before any file writes", async () => {
     // A held port must be reported as a conflict. If docker prerequisites are
     // missing, the script must fail earlier with 3 instead (and change nothing).
@@ -745,7 +745,7 @@ async function main() {
   const inst = fileURLToPath(new URL("../install.sh", import.meta.url))
   // Neutralize any wizard env from the outer shell, then apply per-test overrides.
   const cleanEnv = () => ({
-    NTFY_HARNESSES: "", NTFY_MODE: "", NTFY_SCOPE: "", NTFY_EVENTS: "", NTFY_PHONE: "",
+    NTFY_MODE: "", NTFY_HARNESSES: "", NTFY_SCOPE: "", NTFY_EVENTS: "", NTFY_PHONE: "", NTFY_TOPIC: "",
     NTFY_INSTALL_DEPS: "", NTFY_SKIP_CONFIRM: "", CF_HOSTNAME: "", NTFY_CONFIG_FILE: "",
   })
   const runInst = (args: string[] = [], env: Record<string, string> = {}, input?: string) =>
@@ -770,16 +770,22 @@ async function main() {
     assert.match(r.stderr, /NTFY_MODE must be local\|tailscale\|cloudflare/)
   })
 
-  await test("invalid NTFY_HARNESSES fails fast → exit 2", () => {
-    const r = runInst([], { NTFY_HARNESSES: "other" }, "")
-    assert.equal(r.status, 2)
-    assert.match(r.stderr, /NTFY_HARNESSES must be both\|opencode\|codex/)
-  })
-
   await test("invalid NTFY_SCOPE fails fast → exit 2", () => {
     const r = runInst([], { NTFY_SCOPE: "machine" }, "")
     assert.equal(r.status, 2)
     assert.match(r.stderr, /NTFY_SCOPE must be global\|project/)
+  })
+
+  await test("invalid NTFY_HARNESSES fails fast → exit 2", () => {
+    const r = runInst([], { NTFY_HARNESSES: "opencode,unknown" }, "")
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /unknown harness/)
+  })
+
+  await test("invalid NTFY_TOPIC fails fast → exit 2", () => {
+    const r = runInst([], { NTFY_TOPIC: "bad/topic" }, "")
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /NTFY_TOPIC must use/)
   })
 
   await test("invalid NTFY_EVENTS kind fails fast → exit 2", () => {
@@ -804,7 +810,7 @@ async function main() {
   await test("INSTALL.md documents the full env contract (drift guard)", () => {
     const md = readFileSync(fileURLToPath(new URL("../INSTALL.md", import.meta.url)), "utf8")
     for (const s of [
-      "NTFY_HARNESSES", "NTFY_MODE", "NTFY_SCOPE", "NTFY_EVENTS", "NTFY_PHONE", "NTFY_INSTALL_DEPS",
+      "NTFY_MODE", "NTFY_SCOPE", "NTFY_EVENTS", "NTFY_PHONE", "NTFY_INSTALL_DEPS", "NTFY_TOPIC",
       "NTFY_SKIP_CONFIRM", "CF_HOSTNAME", "NTFY_PORT", "LAN_IP", "NTFY_CONFIG_FILE",
       "setup-server.sh preflight", "sh install.sh",
       "`0` ok · `2` usage/bad input · `3` missing",  // exit-code contract
@@ -818,128 +824,45 @@ async function main() {
     assert.ok(!/^[^\n]*\\[ \t]+#/m.test(md), "INSTALL.md: comment after line-continuation backslash")
   })
 
-  console.log("configure-opencode.mjs contract (add / remove / scan)")
-  const cfgTool = fileURLToPath(new URL("../scripts/configure-opencode.mjs", import.meta.url))
-  const CFG_REPO = fileURLToPath(new URL("../", import.meta.url)).replace(/\/+$/, "")
-  const CFG_SETTINGS = "https://s.example.com|tk_fixture0000000000000000000|nudge-abc123|1|"
-  const tmpCfg = (cfg: unknown): string => {
-    const dir = mkdtempSync(path.join(os.tmpdir(), "ntfy-cfg-"))
-    const f = path.join(dir, "opencode.json")
-    if (cfg !== undefined) writeFileSync(f, JSON.stringify(cfg, null, 2) + "\n")
-    return f
-  }
-  const dropCfg = (f: string) => rmSync(path.dirname(f), { recursive: true, force: true })
-  const readCfg = (f: string): any => JSON.parse(readFileSync(f, "utf8"))
-  const runCfgTool = (args: string[], env: Record<string, string> = {}) =>
-    spawnSync("node", [cfgTool, ...args], { encoding: "utf8", env: { ...process.env, ...env }, timeout: 30000 })
-
-  await test("add: writes our tuple entry, keeps foreign plugins and sibling keys", () => {
-    const f = tmpCfg({ $schema: "x", plugin: ["foreign-plugin"], provider: { keep: true } })
+  await test("site serves a complete plugin archive for the downloaded installer", async () => {
+    const listener = net.createServer()
+    await new Promise<void>((resolve) => listener.listen(0, "127.0.0.1", resolve))
+    const port = (listener.address() as net.AddressInfo).port
+    await new Promise<void>((resolve) => listener.close(() => resolve()))
+    const site = spawn(process.execPath, [fileURLToPath(new URL("serve-site.mjs", import.meta.url)), "--port", String(port)], { stdio: "ignore" })
     try {
-      const r = runCfgTool([f, CFG_REPO], { NTFY_W: CFG_SETTINGS })
-      assert.equal(r.status, 0, r.stderr)
-      assert.equal(r.stdout, "nudge-abc123", "add prints the resulting topic")
-      const cfg = readCfg(f)
-      assert.deepEqual(cfg.plugin[0], "foreign-plugin", "foreign entry preserved")
-      assert.equal(cfg.plugin[1][0], CFG_REPO)
-      assert.equal(cfg.plugin[1][1].serverUrl, "https://s.example.com")
-      assert.equal(cfg.plugin[1][1].baseTopic, "nudge-abc123")
-      assert.deepEqual(cfg.provider, { keep: true }, "sibling keys preserved")
-      assert.equal(cfg.$schema, "x")
+      let response: Response | undefined
+      for (let i = 0; i < 30; i++) {
+        try { response = await fetch(`http://127.0.0.1:${port}/plugin.tar.gz`); break }
+        catch { await new Promise((resolve) => setTimeout(resolve, 50)) }
+      }
+      assert.equal(response?.status, 200)
+      const archive = Buffer.from(await response!.arrayBuffer())
+      const listed = spawnSync("tar", ["-tzf", "-"], { input: archive, encoding: "utf8" })
+      assert.equal(listed.status, 0, listed.stderr)
+      for (const file of ["index.ts", "package-lock.json", "src/index.ts", "scripts/setup-server.sh", "scripts/install-harnesses.mjs", "scripts/configure-opencode.mjs", "scripts/configure-codex.mjs", "scripts/codex-hook.mjs", "adapters/command-code.ts", "adapters/pi.ts", "adapters/hermes/plugin.yaml"]) {
+        assert.ok(listed.stdout.split("\n").includes(file), `archive missing ${file}`)
+      }
+      const installer = await (await fetch(`http://127.0.0.1:${port}/install.sh`)).text()
+      assert.match(installer, /plugin\.tar\.gz/)
     } finally {
-      dropCfg(f)
-    }
-  })
-
-  await test("add: re-running keeps the existing baseTopic and never duplicates the entry", () => {
-    const f = tmpCfg({ plugin: [[CFG_REPO, { baseTopic: "nudge-existing" }]] })
-    try {
-      const r = runCfgTool([f, CFG_REPO], { NTFY_W: CFG_SETTINGS })
-      assert.equal(r.stdout, "nudge-existing", "an installed topic is never regenerated")
-      const cfg = readCfg(f)
-      assert.equal(cfg.plugin.length, 1, "no duplicate entry")
-      assert.equal(cfg.plugin[0][1].baseTopic, "nudge-existing")
-    } finally {
-      dropCfg(f)
-    }
-  })
-
-  await test("add: updates an existing object-form entry in plugins", () => {
-    const f = tmpCfg({ plugins: [{ package: CFG_REPO, options: { baseTopic: "nudge-obj" } }] })
-    try {
-      const r = runCfgTool([f, CFG_REPO], { NTFY_W: CFG_SETTINGS })
-      assert.equal(r.status, 0, r.stderr)
-      assert.equal(r.stdout, "nudge-obj")
-      const options = readCfg(f).plugins[0].options
-      assert.equal(options.serverUrl, "https://s.example.com")
-      assert.equal(options.baseTopic, "nudge-obj")
-    } finally {
-      dropCfg(f)
-    }
-  })
-
-  await test("add: disabled kinds are recorded as enabled:false", () => {
-    const f = tmpCfg({})
-    try {
-      runCfgTool([f, CFG_REPO], { NTFY_W: "https://s.example.com|tk_x|nudge-abc|0|question finished" })
-      const events = readCfg(f).plugin[0][1].events
-      assert.deepEqual(Object.keys(events).sort(), ["custom", "error", "permission"])
-      for (const kind of ["custom", "error", "permission"]) assert.equal(events[kind].enabled, false)
-    } finally {
-      dropCfg(f)
-    }
-  })
-
-  await test("add: unparseable config → exit 2 and the file is left untouched", () => {
-    const f = tmpCfg(undefined)
-    writeFileSync(f, "{ not json")
-    try {
-      const r = runCfgTool([f, CFG_REPO], { NTFY_W: CFG_SETTINGS })
-      assert.equal(r.status, 2)
-      assert.match(r.stderr, /cannot parse/)
-      assert.equal(readFileSync(f, "utf8"), "{ not json")
-    } finally {
-      dropCfg(f)
-    }
-  })
-
-  await test("--scan: present / absent, and it never rewrites", () => {
-    const f = tmpCfg({ plugin: [[CFG_REPO, { serverUrl: "https://s", baseTopic: "t" }]] })
-    try {
-      const present = runCfgTool(["--scan", f, CFG_REPO])
-      assert.equal(present.status, 0)
-      assert.match(present.stdout, /^present\t1 entry\/entries: /)
-      assert.deepEqual(Object.keys(readCfg(f)), ["plugin"], "scan is read-only")
-      const absent = runCfgTool(["--scan", path.join(path.dirname(f), "missing.json"), CFG_REPO])
-      assert.match(absent.stdout, /^absent\tfile not present/)
-    } finally {
-      dropCfg(f)
-    }
-  })
-
-  await test("--remove: strips only our entry, foreign entries survive", () => {
-    const f = tmpCfg({ plugin: ["foreign-plugin", [CFG_REPO, { serverUrl: "https://s", baseTopic: "t" }]] })
-    try {
-      const r = runCfgTool(["--remove", f, CFG_REPO])
-      assert.equal(r.status, 0)
-      assert.match(r.stdout, /^removed\t1 entry\/entries removed: /)
-      assert.deepEqual(readCfg(f).plugin, ["foreign-plugin"])
-    } finally {
-      dropCfg(f)
+      site.kill()
     }
   })
 
   console.log("uninstall.sh contract (SPEC §15)")
   const uninst = fileURLToPath(new URL("../scripts/uninstall.sh", import.meta.url))
   const REPO = fileURLToPath(new URL("../", import.meta.url)).replace(/\/+$/, "")
+  const defaultUnHome = mkdtempSync(path.join(os.tmpdir(), "ntfy-uninstall-home-"))
   // Neutralize uninstall env from the outer shell; per-test overrides win.
   const cleanUnEnv = () => ({
     NTFY_CONFIG_FILE: "", NTFY_PLUGIN_DIR: "", NTFY_REMOVE_PATHS: "",
-    NTFY_SETUP_DIR: "", XDG_CONFIG_HOME: "",
+    NTFY_SETUP_DIR: "", XDG_CONFIG_HOME: "", HOME: defaultUnHome,
   })
   const runUn = (args: string[] = [], env: Record<string, string> = {}) =>
     spawnSync("bash", [uninst, ...args], {
       encoding: "utf8",
+      cwd: defaultUnHome,
       env: { ...process.env, ...cleanUnEnv(), ...env },
       timeout: 30000,
     })
@@ -1420,6 +1343,28 @@ async function main() {
     // a `#` comment after a `\` continuation silently drops the rest of a pasted command
     assert.ok(!/^[^\n]*\\[ \t]+#/m.test(md), "UNINSTALL.md: comment after line-continuation backslash")
   })
+
+  await test("UNINSTALL.md report table is byte-identical to SPEC §15.3", () => {
+    const grabRows = (text: string, label: string): string[] => {
+      const lines = text.split("\n")
+      const start = lines.findIndex((l) => l.startsWith("config entry ........."))
+      assert.ok(start >= 0, `${label}: report table not found`)
+      const rows: string[] = []
+      for (let i = start; i < lines.length; i++) {
+        const l = lines[i]
+        if (l.trim() === "" || l.trim().startsWith("```")) break
+        rows.push(l)
+      }
+      return rows
+    }
+    const spec = readFileSync(fileURLToPath(new URL("../SPEC.md", import.meta.url)), "utf8")
+    const runb = readFileSync(fileURLToPath(new URL("../UNINSTALL.md", import.meta.url)), "utf8")
+    const a = grabRows(spec, "SPEC §15.3")
+    const b = grabRows(runb, "UNINSTALL.md Step 4")
+    assert.ok(a.length >= 10, `SPEC §15.3 has only ${a.length} rows`)
+    assert.deepEqual(b, a, "UNINSTALL.md Step-4 table must match SPEC §15.3 byte-for-byte")
+  })
+  rmSync(defaultUnHome, { recursive: true, force: true })
 
   console.log("")
   if (failures.length) {

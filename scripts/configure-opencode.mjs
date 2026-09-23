@@ -218,7 +218,7 @@ function add() {
   const opts = form === "plugin" ? (entry[1] = entry[1] || {}) : (entry.options = entry.options || {})
   opts.serverUrl = serverUrl
   opts.token = token
-  opts.baseTopic = typeof opts.baseTopic === "string" && opts.baseTopic ? opts.baseTopic : proposed
+  opts.baseTopic = process.env.NTFY_FORCE_TOPIC === "1" || !opts.baseTopic ? proposed : opts.baseTopic
   const events = opts.events && typeof opts.events === "object" ? opts.events : {}
   KINDS.forEach((kind) => {
     if (enabled.indexOf(kind) === -1) {

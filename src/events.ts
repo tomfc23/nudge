@@ -76,11 +76,11 @@ export async function watchEvents(
   const titleOf = async (sessionID: string): Promise<string> => {
     try {
       const info = await ctx.session.get({ sessionID })
-      if (info?.title) return info.title
+      if (info?.title) return `OpenCode · ${info.title}`
     } catch {
       // Session may live in another location; fall through to a stable fallback.
     }
-    return `session …${sessionID.slice(-6)}`
+    return `OpenCode · session …${sessionID.slice(-6)}`
   }
 
   const ensureTurn = (sessionID: string): TurnStats => {
@@ -117,7 +117,7 @@ export async function watchEvents(
     try {
       const info = await ctx.session.get({ sessionID })
       outcome = info?.outcome ?? "succeeded"
-      title = info?.title ?? ""
+      title = info?.title ? `OpenCode · ${info.title}` : ""
     } catch {
       /* fallback below */
     }

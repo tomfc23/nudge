@@ -82,6 +82,8 @@ const shims = () => {
   shim("launchctl", ":")
   shim("cloudflared", `case "$1 $2" in "tunnel list") printf 'ID NAME CREATED CONNECTIONS\\n' ;; esac`)
   shim("tailscale", "exit 1")
+  shim("hermes", ":")
+  shim("npm", ":")
   return dir
 }
 const SHIMS = shims()
@@ -99,7 +101,7 @@ const baseEnv = (home) => ({
 })
 
 const runCli = (args, home, env = {}, cli = CLI) =>
-  spawnSync(process.execPath, [cli, ...args], { encoding: "utf8", env: { ...baseEnv(home), ...env }, timeout: 30000 })
+  spawnSync(process.execPath, [cli, ...args], { encoding: "utf8", cwd: home, env: { ...baseEnv(home), ...env }, timeout: 30000 })
 
 /* ---------------------------------------------------------------- tests */
 
@@ -146,6 +148,7 @@ test("status --json: single JSON object, harnesses absent when nothing is wired"
     assert.equal(out.kind, "status")
     assert.equal(out.harnesses.opencode.present, false)
     assert.equal(out.harnesses.codex.present, false)
+    for (const name of ["command-code", "pi", "hermes"]) assert.equal(out.harnesses[name].present, false)
     assert.equal(out.plugin.dir, REPO)
     assert.equal(out.plugin.kind, "checkout")
   }))
@@ -205,7 +208,7 @@ test("update --dry-run prints the plan and changes nothing", () =>
 // the website is not deployed, so a site URL here would be unreachable.
 const fakeArchivePlugin = () => {
   const dir = tmp("nudge-cli-plugin-")
-  for (const entry of ["scripts", "src"]) cpSync(join(REPO, entry), join(dir, entry), { recursive: true })
+  for (const entry of ["scripts", "src", "adapters"]) cpSync(join(REPO, entry), join(dir, entry), { recursive: true })
   writeFileSync(join(dir, "index.ts"), "export {}\n")
   writeFileSync(join(dir, "package.json"), `${JSON.stringify({ name: "opencode-ntfy", version: "0.0.9" })}\n`)
   return dir
@@ -236,6 +239,37 @@ test("update --dry-run keeps an explicit NTFY_SITE_URL (website archive installs
     } finally {
       rmSync(plugin, { recursive: true, force: true })
     }
+  }))
+
+test("installer replaces an existing archive before running its preflight", () =>
+  withHome((home) => {
+    const source = join(home, "source")
+    const installed = join(home, "installed")
+    const downloaded = join(home, "install.sh")
+    mkdirSync(join(source, "src"), { recursive: true })
+    mkdirSync(join(source, "scripts"), { recursive: true })
+    mkdirSync(join(installed, "scripts"), { recursive: true })
+    writeFileSync(join(source, "src/index.ts"), "export {}\n")
+    writeFileSync(join(source, "scripts/setup-server.sh"), "#!/bin/sh\nprintf '{\"checks\":[]}\\n'\nexit 3\n")
+    writeFileSync(join(source, "scripts/install-harnesses.mjs"), "")
+    writeFileSync(join(source, "scripts/configure-opencode.mjs"), "")
+    writeFileSync(join(source, "package-lock.json"), "{}")
+    writeFileSync(join(installed, "scripts/setup-server.sh"), "old archive")
+    copyFileSync(join(REPO, "install.sh"), downloaded)
+    assert.equal(spawnSync("git", ["init", "-q", source]).status, 0)
+    assert.equal(spawnSync("git", ["-C", source, "add", "."]).status, 0)
+    assert.equal(spawnSync("git", ["-C", source, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.com", "commit", "-qm", "fixture"]).status, 0)
+    const env = {
+      ...baseEnv(home), NTFY_REPO_URL: source, NTFY_PLUGIN_DIR: installed,
+      NTFY_MODE: "local", LAN_IP: "192.168.1.5", NTFY_HARNESSES: "pi",
+      NTFY_SCOPE: "global", NTFY_EVENTS: "all", NTFY_PHONE: "none",
+      NTFY_INSTALL_DEPS: "0", NTFY_SKIP_CONFIRM: "1",
+    }
+    const result = spawnSync("bash", [downloaded], { cwd: home, env, encoding: "utf8", timeout: 30000 })
+    assert.notEqual(result.status, 0, "fixture preflight stops the installer")
+    assert.equal(readFileSync(join(installed, "src/index.ts"), "utf8"), "export {}\n")
+    assert.equal(existsSync(join(installed, "scripts/install-harnesses.mjs")), true)
+    assert.equal(existsSync(join(installed, "scripts/setup-server.sh")), true)
   }))
 
 test("install: unreachable source → exit 3, nothing executed", () =>
@@ -346,7 +380,54 @@ test("add rejects a missing or unknown harness", () =>
   withHome((home) => {
     wireOpencode(home)
     assert.equal(runCli(["add"], home).status, 2)
-    assert.match(runCli(["add", "pi"], home).stderr, /add needs a harness/)
+    assert.match(runCli(["add", "unknown"], home).stderr, /add needs a harness/)
+  }))
+
+test("add, status, and remove support Command Code, Pi, and Hermes", () =>
+  withHome((home) => {
+    wireOpencode(home)
+    for (const name of ["command-code", "pi", "hermes"]) {
+      const added = runCli(["add", name, "--global"], home)
+      assert.equal(added.status, 0, `${name}: ${added.stderr}`)
+      assert.equal(runCli(["add", name, "--global"], home).status, 0, "add is idempotent")
+    }
+    const shared = readJsonFile(join(home, ".config/ntfy-archive/config.json"))
+    assert.equal(shared.baseTopic, OUR_ENTRY.baseTopic)
+    assert.equal(shared.token, OUR_ENTRY.token)
+    const status = JSON.parse(runCli(["status", "--json"], home).stdout)
+    for (const name of ["command-code", "pi", "hermes"]) assert.equal(status.harnesses[name].present, true)
+    for (const name of ["command-code", "pi", "hermes"]) {
+      const removed = runCli(["remove", name, "--json"], home)
+      assert.equal(removed.status, 0, `${name}: ${removed.stderr}`)
+      assert.equal(JSON.parse(removed.stdout).removed.length, 1)
+    }
+    const after = JSON.parse(runCli(["status", "--json"], home).stdout)
+    for (const name of ["command-code", "pi", "hermes"]) assert.equal(after.harnesses[name].present, false)
+    assert.equal(after.harnesses.opencode.present, true)
+  }))
+
+test("a standalone-only install supplies settings and survives update detection", () =>
+  withHome((home) => {
+    const plugin = fakeArchivePlugin()
+    try {
+      const shared = join(home, ".config/ntfy-archive/config.json")
+      mkdirSync(dirname(shared), { recursive: true })
+      writeFileSync(shared, JSON.stringify({ serverUrl: OUR_ENTRY.serverUrl, token: OUR_ENTRY.token, baseTopic: OUR_ENTRY.baseTopic, events: {} }))
+      const loader = join(home, ".pi/agent/extensions/ntfy.ts")
+      mkdirSync(dirname(loader), { recursive: true })
+      writeFileSync(loader, `export { default } from ${JSON.stringify(join(plugin, "adapters/pi.ts"))}\n`)
+      const env = { NTFY_PLUGIN_DIR: "" }
+      const status = JSON.parse(runCli(["status", "--json"], home, env).stdout)
+      assert.equal(status.topic, OUR_ENTRY.baseTopic)
+      assert.equal(status.harnesses.pi.present, true)
+      const update = runCli(["update", "--dry-run"], home, env)
+      assert.equal(update.status, 0, update.stderr)
+      assert.match(update.stdout, /NTFY_HARNESSES=pi/)
+      const add = runCli(["add", "command-code", "--global"], home, env)
+      assert.equal(add.status, 0, add.stderr)
+    } finally {
+      rmSync(plugin, { recursive: true, force: true })
+    }
   }))
 
 test("remove codex strips the hooks and leaves opencode alone", () =>
@@ -411,6 +492,25 @@ test("uninstall defaults to level 1 and removes only the config entry", () =>
     const r = runCli(["uninstall"], home)
     assert.equal(r.status, 0, r.stderr)
     assert.deepEqual(readJsonFile(config).plugin, [])
+  }))
+
+test("uninstall removes the three standalone loaders and keeps shared settings for review", () =>
+  withHome((home) => {
+    wireOpencode(home)
+    for (const name of ["command-code", "pi", "hermes"]) {
+      assert.equal(runCli(["add", name, "--global"], home).status, 0)
+    }
+    const r = runCli(["uninstall", "--json"], home)
+    assert.equal(r.status, 0, r.stderr)
+    const items = JSON.parse(r.stdout).items
+    for (const name of ["command-code", "pi", "hermes"]) {
+      assert.ok(items.some((item) => item.id.startsWith(`${name}:`) && item.status === "removed"), name)
+    }
+    assert.ok(items.some((item) => item.id.startsWith("shared-config:") && item.status === "manual"))
+    assert.equal(existsSync(join(home, ".commandcode/mods/ntfy.ts")), false)
+    assert.equal(existsSync(join(home, ".pi/agent/extensions/ntfy.ts")), false)
+    assert.equal(existsSync(join(home, ".hermes/plugins/ntfy")), false)
+    assert.equal(existsSync(join(home, ".config/ntfy-archive/config.json")), true)
   }))
 
 test("uninstall --level 3 refuses without --yes and deletes nothing", () =>

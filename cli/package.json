@@ -1,7 +1,7 @@
 {
   "name": "nudge-agent",
-  "version": "0.1.1",
-  "description": "Manage a Nudge install: phone notifications for OpenCode and Codex.",
+  "version": "0.2.0",
+  "description": "Manage Nudge notifications for OpenCode, Codex, Command Code, Pi, and Hermes.",
   "type": "module",
   "license": "MIT",
   "bin": {
@@ -17,6 +17,9 @@
     "nudge",
     "opencode",
     "codex",
+    "command-code",
+    "pi",
+    "hermes",
     "ntfy",
     "notifications"
   ],

@@ -1,18 +1,22 @@
 {
   "name": "opencode-ntfy",
-  "version": "0.1.1",
-  "description": "Nudge notifications for OpenCode and Codex via a self-hosted ntfy server",
+  "version": "0.2.0",
+  "description": "Nudge notifications for OpenCode, Codex, Command Code, Pi, and Hermes via a self-hosted ntfy server",
   "type": "module",
   "license": "MIT",
   "main": "./index.ts",
   "exports": "./index.ts",
   "files": [
     "src",
-    "README.md"
+    "README.md",
+    "site"
   ],
   "scripts": {
+    "site": "node scripts/serve-site.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "tsx scripts/test.ts && node scripts/test-codex.mjs && node cli/test.mjs"
+    "test": "tsx scripts/test.ts && node scripts/test-codex.mjs && node --import tsx scripts/test-harnesses.ts && node cli/test.mjs",
+    "test:harnesses": "node --import tsx scripts/test-harnesses.ts",
+    "test:codex": "node scripts/test-codex.mjs"
   },
   "dependencies": {
     "@opencode/plugin": "^2.0.12"

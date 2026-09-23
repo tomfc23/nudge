@@ -25,8 +25,9 @@ work around the gate.
   matcher: both entry forms (`plugin` tuple and `plugins` object), sibling keys
   and foreign entries untouched (the file **is** rewritten as canonical 2-space
   JSON — indentation/newline normalized, content and key order preserved).
-- **Levels (cumulative):** **L1** = OpenCode config entry and Nudge's Codex
-  `Stop`/`PermissionRequest` hooks plus Codex token config — notifications stop, the
+- **Levels (cumulative):** **L1** = OpenCode config entry, Nudge's Codex
+  `Stop`/`PermissionRequest` hooks and token config, plus Nudge-owned
+  Command Code, Pi, and Hermes loaders — notifications stop, the
   server keeps running · **L2** = + server & tunnel infra — `compose down`
   (**data kept**, re-installable), LaunchAgent booted out + plist deleted,
   cloudflared tunnel deleted, `tailscale serve reset` · **L3** = + full wipe —
@@ -49,6 +50,10 @@ work around the gate.
   `NTFY_REMOVE_PATHS`) · delete a checkout that is not the default clone.
 - **Idempotent:** re-running is always safe — gone components come back as
   `skipped-already-gone`, exit `0`.
+
+Shared `~/.config/ntfy-archive` settings are left in place for manual review;
+they may still be used by another project or harness. The uninstall report
+lists the current global and project files if present.
 
 ## Ask the user this (one chat round is enough)
 

@@ -125,6 +125,17 @@ list_codex_dirs() {
 run_codex() { # <dir> <--scan|--remove> -> CODEX_ST
   CODEX_ST="$(node "$REPO_ROOT/scripts/configure-codex.mjs" "$2" "$1/hooks.json" "$1/nudge.json" 2>&1)" || CODEX_ST="failed: $CODEX_ST"
 }
+run_standalone() { # <--scan|--remove> appends verified harness loader results
+  if ! node "$REPO_ROOT/scripts/install-harnesses.mjs" "$1" "$PLUGIN_PATH" >> "$ITEMS"; then
+    add_item "standalone-harnesses" failed "could not inspect Nudge loaders"
+  fi
+}
+shared_config_note() { # settings may be shared by other harnesses; leave them for manual review
+  for f in "$HOME/.config/ntfy-archive/config.json" "$(node -e 'const {createHash}=require("node:crypto"); const {join}=require("node:path"); process.stdout.write(join(process.env.HOME,".config/ntfy-archive/projects",createHash("sha256").update(process.cwd()).digest("hex")+".json"))')"; do
+    [ -f "$f" ] && add_item "shared-config:$f" manual "left in place; delete only if no Nudge harness still uses it"
+  done
+  return 0
+}
 
 # ------------------------------------------------------------------ config tool (node — JSON-safe, D14)
 # prints: "<status>\t<detail>"  ·  modes: scan (read-only) | remove
@@ -197,6 +208,8 @@ collect_inventory() {
   done <<EOF
 $CODEX_DIRS
 EOF
+  run_standalone --scan
+  shared_config_note
 
   if [ -d "$CLONE_DEFAULT" ]; then add_item "clone-default" present "$CLONE_DEFAULT"; else add_item "clone-default" absent ""; fi
 
@@ -305,6 +318,8 @@ run_l1() {
   done <<EOF
 $CODEX_DIRS
 EOF
+  run_standalone --remove
+  shared_config_note
   if [ "$REMOVED" = 1 ]; then
     add_item "restart" manual "start (or restart) OpenCode once to unload the plugin"
     add_item "phone-subscription" manual "left in the app so a reinstall resubscribes to the same topic — delete it there if you are done for good"

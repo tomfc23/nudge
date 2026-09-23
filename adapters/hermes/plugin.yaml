@@ -1,0 +1,10 @@
+name: ntfy
+version: "0.1.0"
+description: Push Hermes turn, approval, error, and custom notifications to ntfy
+provides_tools:
+  - ntfy_notify
+provides_hooks:
+  - post_llm_call
+  - post_tool_call
+  - pre_approval_request
+  - on_session_end

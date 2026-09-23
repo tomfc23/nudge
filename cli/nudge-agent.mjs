@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * nudge-agent — manage a Nudge install (phone notifications for OpenCode and Codex).
+ * nudge-agent — manage a Nudge install (phone notifications for coding agents).
  *
  * Deliberately a dispatcher: every action is delegated to the scripts in the
  * plugin directory — install.sh, scripts/setup-server.sh, scripts/uninstall.sh,
@@ -11,13 +11,16 @@
  * Zero runtime dependencies, ESM, Node >= 18.
  */
 import { spawnSync } from "node:child_process"
-import { existsSync, mkdtempSync, readFileSync, readSync, rmSync } from "node:fs"
+import { createHash } from "node:crypto"
+import { existsSync, lstatSync, mkdtempSync, readFileSync, readlinkSync, readSync, rmSync, unlinkSync } from "node:fs"
 import { homedir, tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const KINDS = ["question", "permission", "finished", "error", "custom"]
 const CODEX_KINDS = ["question", "permission", "finished"]
+const HARNESSES = ["opencode", "codex", "command-code", "pi", "hermes"]
+const STANDALONE = ["command-code", "pi", "hermes"]
 // The installer is fetched from the public repo, and by default so is the plugin
 // (install.sh's NTFY_REPO_URL path) — the website is a human-facing front end,
 // not a hard dependency of the CLI. Set NTFY_SITE_URL to use the website's
@@ -101,7 +104,7 @@ const parseScope = (input, fallback) => {
 }
 
 function askScope(harness, inherited) {
-  const where = (scope) => tildify(harness === "codex" ? codexDir(scope) : opencodeFile(scope))
+  const where = (scope) => tildify(harness === "codex" ? codexDir(scope) : harness === "opencode" ? opencodeFile(scope) : standaloneConfigFile(scope))
   for (;;) {
     const question = `scope    global (${where("global")}) or project (${where("project")})? [${inherited}] `
     process.stdout.write(question)
@@ -127,6 +130,19 @@ function pluginDir() {
       })
     }
   }
+  for (const harness of ["command-code", "pi"]) {
+    for (const scope of ["project", "global"]) {
+      try {
+        const text = readFileSync(loaderPath(harness, scope), "utf8").trim()
+        const source = JSON.parse(/^export \{ default \} from (".+")$/.exec(text)?.[1] || "null")
+        if (typeof source === "string" && source.endsWith(`/adapters/${harness}.ts`)) candidates.push(resolve(dirname(source), ".."))
+      } catch {}
+    }
+  }
+  try {
+    const source = resolve(dirname(loaderPath("hermes", "global")), readlinkSync(loaderPath("hermes", "global")))
+    if (source.endsWith("/adapters/hermes")) candidates.push(resolve(source, "../.."))
+  } catch {}
   candidates.push(CLONE_DEFAULT)
   candidates.push(join(CLI_PATH, "..", ".."))
   for (const candidate of candidates) {
@@ -152,6 +168,43 @@ function codexDirs() {
   const project = join(process.cwd(), ".codex")
   if (project !== CODEX_HOME) dirs.push(project)
   return dirs
+}
+
+const standaloneConfigFile = (scope) => scope === "project"
+  ? join(HOME, ".config/ntfy-archive/projects", `${createHash("sha256").update(process.cwd()).digest("hex")}.json`)
+  : join(HOME, ".config/ntfy-archive/config.json")
+
+function standaloneConfig() {
+  const files = process.env.NTFY_CONFIG_FILE
+    ? [process.env.NTFY_CONFIG_FILE]
+    : [standaloneConfigFile("project"), standaloneConfigFile("global")]
+  for (const file of files) {
+    const config = readJson(file)
+    if (config?.serverUrl && config?.baseTopic) return { file, config, scope: file === standaloneConfigFile("project") ? "project" : "global" }
+  }
+  return null
+}
+
+const loaderPath = (harness, scope) => harness === "hermes"
+  ? join(HOME, ".hermes/plugins/ntfy")
+  : harness === "pi"
+    ? scope === "project" ? join(process.cwd(), ".pi/extensions/ntfy.ts") : join(HOME, ".pi/agent/extensions/ntfy.ts")
+    : scope === "project" ? join(process.cwd(), ".commandcode/mods/ntfy.ts") : join(HOME, ".commandcode/mods/ntfy.ts")
+
+function standaloneLoader(plugin, harness) {
+  for (const scope of harness === "hermes" ? ["global"] : ["project", "global"]) {
+    const file = loaderPath(harness, scope)
+    if (ownsLoader(plugin, harness, file)) return { file, scope }
+  }
+  return null
+}
+
+function ownsLoader(plugin, harness, file) {
+  try {
+    return harness === "hermes"
+      ? lstatSync(file).isSymbolicLink() && resolve(dirname(file), readlinkSync(file)) === resolve(plugin, "adapters/hermes")
+      : readFileSync(file, "utf8").trim() === `export { default } from ${JSON.stringify(resolve(plugin, "adapters", harness + ".ts"))}`
+  } catch { return false }
 }
 
 const readJson = (file) => {
@@ -233,6 +286,17 @@ function currentSettings(plugin) {
       events: codex.config.events,
     }
   }
+  const shared = standaloneConfig()
+  if (shared) {
+    return {
+      harness: STANDALONE.find((name) => standaloneLoader(plugin, name)) || "shared",
+      scope: shared.scope,
+      serverUrl: shared.config.serverUrl,
+      token: shared.config.token,
+      topic: shared.config.baseTopic,
+      events: shared.config.events,
+    }
+  }
   return null
 }
 
@@ -312,6 +376,7 @@ async function gather(plugin) {
   const codex = codexSettings()
   const hooks = codex ? ourHooks(codex.hooksFile) : []
   const trust = codex ? trustState(codex.hooksFile, hooks) : []
+  const shared = standaloneConfig()
   const health = server ? await probe(server.url) : null
 
   return {
@@ -345,6 +410,12 @@ async function gather(plugin) {
             events: enabledKinds(codex.config.events, CODEX_KINDS),
           }
         : { present: false },
+      ...Object.fromEntries(STANDALONE.map((name) => {
+        const loader = plugin ? standaloneLoader(plugin, name) : null
+        return [name, loader
+          ? { present: true, ...loader, config: shared?.file || null, events: shared ? enabledKinds(shared.config.events) : [] }
+          : { present: false }]
+      })),
     },
     dataDir: DATA_DIR,
     inventory: items,
@@ -400,8 +471,12 @@ async function cmdStatus() {
         ? ` — ${codex.hooks} hooks, ${codex.trusted} trusted${codex.trusted < codex.hooks ? " (trust them in /hooks)" : ""}`
         : ""),
   )
+  for (const name of STANDALONE) {
+    const harness = status.harnesses[name]
+    say(`${name.padEnd(12)}${harness.present ? `${yes(true)} ${harness.file}` : "not wired"}`)
+  }
   say(`data     ${status.dataDir} — container: ${status.container}`)
-  if (!opencode.present && !codex.present) {
+  if (!HARNESSES.some((name) => status.harnesses[name].present)) {
     say("")
     say("Nothing is wired to a harness yet — run: nudge-agent install")
   }
@@ -422,7 +497,7 @@ function cmdInstall(args) {
     if (curl.status !== 0 || !existsSync(file)) return fail(`could not download ${INSTALL_URL}`, 3)
     const env = sourceEnv()
     say(`plugin   from ${env.NTFY_SITE_URL ? `${env.NTFY_SITE_URL} (website archive)` : env.NTFY_REPO_URL}`)
-    if (harness) env.NTFY_HARNESSES = harness
+    if (harness) env.NTFY_HARNESSES = harness === "both" ? "opencode,codex" : harness
     return run("bash", [file], env).status ?? 1
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -446,7 +521,8 @@ function detectedInstallerEnv(plugin) {
   const wired = []
   if (opencodeSettings(plugin)) wired.push("opencode")
   if (codexSettings()) wired.push("codex")
-  if (wired.length) detected.NTFY_HARNESSES = wired.length === 2 ? "both" : wired[0]
+  for (const name of STANDALONE) if (standaloneLoader(plugin, name)) wired.push(name)
+  if (wired.length) detected.NTFY_HARNESSES = wired.join(",")
 
   const server = serverInfo()
   if (server) {
@@ -596,9 +672,26 @@ function writeOpencode(plugin, settings, scope) {
   return 0
 }
 
+function writeStandalone(plugin, settings, scope, harness) {
+  const tokenRef = /^\{env:([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(settings.token || "")
+  const token = tokenRef ? process.env[tokenRef[1]] || process.env.NTFY_TOKEN || "" : settings.token || ""
+  const enabled = enabledKinds(settings.events)
+  const result = sh("node", [pluginScript(plugin, "install-harnesses.mjs"), plugin, scope, harness], {
+    ...process.env,
+    NTFY_SERVER_URL: settings.serverUrl,
+    NTFY_TOKEN: token,
+    NTFY_TOPIC: settings.topic,
+    NTFY_FORCE_TOPIC: "1",
+    NTFY_EVENTS: enabled.length === KINDS.length ? "all" : enabled.join(","),
+  })
+  if (result.status !== 0) return fail(result.stderr.trim() || `writing ${harness} config failed`, result.status ?? 1)
+  say(`${harness.padEnd(12)}✓ ${loaderPath(harness, scope)}`)
+  return 0
+}
+
 function cmdAdd(args) {
   const harness = args.find((arg) => !arg.startsWith("-"))
-  if (harness !== "opencode" && harness !== "codex") return fail("add needs a harness: opencode | codex")
+  if (!HARNESSES.includes(harness)) return fail(`add needs a harness: ${HARNESSES.join(" | ")}`)
   const plugin = pluginDir()
   if (!plugin) return fail("Nudge is not installed — run: nudge-agent install", 3)
 
@@ -611,6 +704,10 @@ function cmdAdd(args) {
     say("opencode already wired")
     return 0
   }
+  if (STANDALONE.includes(harness) && standaloneLoader(plugin, harness)) {
+    say(`${harness} already wired`)
+    return 0
+  }
 
   const settings = currentSettings(plugin)
   if (!settings) {
@@ -619,12 +716,14 @@ function cmdAdd(args) {
   say(`settings from ${settings.harness} (${settings.topic})`)
   // No flag: ask, defaulting to wherever the harness we're copying from lives.
   const chosen = scope || (canAsk() ? askScope(harness, settings.scope) : settings.scope)
-  return harness === "codex" ? writeCodex(plugin, settings, chosen) : writeOpencode(plugin, settings, chosen)
+  return harness === "codex" ? writeCodex(plugin, settings, chosen)
+    : harness === "opencode" ? writeOpencode(plugin, settings, chosen)
+    : writeStandalone(plugin, settings, chosen, harness)
 }
 
 function cmdRemove(args) {
   const harness = args.find((arg) => !arg.startsWith("-"))
-  if (harness !== "opencode" && harness !== "codex") return fail("remove needs a harness: opencode | codex")
+  if (!HARNESSES.includes(harness)) return fail(`remove needs a harness: ${HARNESSES.join(" | ")}`)
   const plugin = pluginDir()
   if (!plugin) return fail("Nudge is not installed — run: nudge-agent install", 3)
 
@@ -639,7 +738,7 @@ function cmdRemove(args) {
       }
     }
     if (!removed.length) say("opencode nothing to remove")
-  } else {
+  } else if (harness === "codex") {
     for (const dir of codexDirs()) {
       const hooksFile = join(dir, "hooks.json")
       if (!ourHooks(hooksFile).length) continue
@@ -658,6 +757,21 @@ function cmdRemove(args) {
       }
     }
     if (!removed.length) say("codex    nothing to remove")
+  } else {
+    for (const scope of harness === "hermes" ? ["global"] : ["project", "global"]) {
+      const file = loaderPath(harness, scope)
+      if (!ownsLoader(plugin, harness, file)) continue
+      if (harness === "hermes") {
+        const disable = sh("hermes", ["plugins", "disable", "ntfy"])
+        if (disable.error?.code !== "ENOENT" && disable.status !== 0) {
+          return fail(disable.stderr.trim() || "could not disable Hermes plugin", 3)
+        }
+      }
+      unlinkSync(file)
+      removed.push(file)
+      say(`${harness.padEnd(12)}✓ ${file}`)
+    }
+    if (!removed.length) say(`${harness} nothing to remove`)
   }
 
   if (JSON_MODE) emit({ ok: true, kind: "remove", harness, removed })
@@ -692,14 +806,16 @@ function cmdUninstall(args) {
 
 /* ------------------------------------------------------------------ dispatch */
 
-const USAGE = `nudge-agent — manage a Nudge install (phone notifications for OpenCode and Codex)
+const USAGE = `nudge-agent — manage a Nudge install (phone notifications for coding agents)
 
-  nudge-agent install [--harness both|opencode|codex]     run the setup wizard
+  nudge-agent install [--harness opencode,codex,command-code,pi,hermes]  run the setup wizard
   nudge-agent status                                      what is wired up right now
   nudge-agent update [--dry-run]                          bring the plugin up to date
-  nudge-agent add <opencode|codex> [--global|--project]   wire one more harness (prompts for scope)
-  nudge-agent remove <opencode|codex>                     unwire one harness
+  nudge-agent add <harness> [--global|--project]          wire one more harness (prompts for scope)
+  nudge-agent remove <harness>                            unwire one harness
   nudge-agent uninstall [--level 1|2|3] [--yes]           remove Nudge
+
+Harnesses: opencode, codex, command-code, pi, hermes
 
 Flags:
   --json          machine-readable output on stdout, human text on stderr

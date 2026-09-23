@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Nudge installer for OpenCode and Codex.
+# opencode-ntfy installer — seamless setup for humans AND agents (SPEC §14.4 A).
 #
 #   human (from the project website):
 #     curl -fsSL https://nudge.tommyek.com/install.sh -o install.sh && sh install.sh
@@ -11,14 +11,16 @@
 #     NTFY_EVENTS=all NTFY_PHONE=ios NTFY_INSTALL_DEPS=1 NTFY_SKIP_CONFIRM=1 \
 #     sh install.sh
 #
-# What it does: asks which harnesses, then provisions the server and writes
-# the selected harness configs while preserving unrelated settings; walks through the
+# What it does: 6 quick questions -> preflight (offers to install missing deps,
+# with consent) -> provisions the server via scripts/setup-server.sh -> writes
+# opencode.json (JSON-safe, preserves everything else) -> walks you through the
 # one manual step (phone subscription) -> sends a test push -> summary.
 #
 # Question env overrides:
-#   NTFY_HARNESSES    both | opencode | codex           which agents to configure
 #   NTFY_MODE         local | tailscale | cloudflare    how the phone reaches the server
-#   NTFY_SCOPE        global | project                  which agent config scope to write
+#   NTFY_SCOPE        global | project                  which opencode.json to write
+#   NTFY_HARNESSES    csv: opencode,codex,command-code,pi,hermes  harnesses to wire
+#   NTFY_TOPIC        explicit topic (also changes an existing installation)
 #   NTFY_EVENTS       all | csv of ENABLED kinds        question,permission,finished,error,custom
 #   NTFY_PHONE        ios | android | none              tailors the final instructions
 #   NTFY_INSTALL_DEPS 1 (auto-yes) | 0 (auto-no)        answers the Homebrew/log-in consents
@@ -30,7 +32,7 @@
 # Exit codes: 0 ok · 2 usage/bad input/EOF · 3 required dependency missing ·
 #             otherwise the exit code of scripts/setup-server.sh (its 2/3/4/5).
 #
-# Runs under sh (bash/dash/ash) and bash; needs node.
+# Runs under sh (bash/dash/ash) and bash; needs node (OpenCode requires it).
 
 set -eu
 (set -o pipefail) 2>/dev/null && set -o pipefail
@@ -48,14 +50,14 @@ die() {
 }
 usage() {
   cat <<USAGE
-Nudge installer
+opencode-ntfy installer
 
-  sh install.sh                     interactive wizard
+  sh install.sh                     interactive wizard (6 questions)
   NTFY_MODE=... sh install.sh       scripted / agent-driven (see header env list)
 
-Questions: harnesses (both|opencode|codex) -> access mode (local|tailscale|cloudflare) -> config scope (global|project)
+Questions: access mode (local|tailscale|cloudflare) -> harnesses -> config scope (global|project)
 -> which notifications (all or per-kind) -> phone OS -> (preflight fixes deps).
-Env overrides: NTFY_HARNESSES NTFY_MODE NTFY_SCOPE NTFY_EVENTS NTFY_PHONE NTFY_INSTALL_DEPS
+Env overrides: NTFY_MODE NTFY_HARNESSES NTFY_SCOPE NTFY_EVENTS NTFY_PHONE NTFY_INSTALL_DEPS NTFY_TOPIC
 NTFY_SKIP_CONFIRM CF_HOSTNAME NTFY_PORT LAN_IP NTFY_CONFIG_FILE NTFY_SETUP_DIR
 NTFY_PLUGIN_DIR NTFY_SITE_URL NTFY_REPO_URL
 
@@ -124,17 +126,24 @@ if [ -n "${NTFY_MODE:-}" ]; then
     *) die 2 "NTFY_MODE must be local|tailscale|cloudflare (got: $NTFY_MODE)" ;;
   esac
 fi
-if [ -n "${NTFY_HARNESSES:-}" ]; then
-  case "$NTFY_HARNESSES" in
-    both|opencode|codex) ;;
-    *) die 2 "NTFY_HARNESSES must be both|opencode|codex (got: $NTFY_HARNESSES)" ;;
-  esac
-fi
 if [ -n "${NTFY_SCOPE:-}" ]; then
   case "$NTFY_SCOPE" in
     global|project) ;;
     *) die 2 "NTFY_SCOPE must be global|project (got: $NTFY_SCOPE)" ;;
   esac
+fi
+if [ -n "${NTFY_HARNESSES:-}" ]; then
+  case "$NTFY_HARNESSES" in ,*|*,|*,,*) die 2 "NTFY_HARNESSES must be a comma-separated list without empty entries" ;; esac
+  OLDIFS="$IFS"; IFS=","
+  for h in $NTFY_HARNESSES; do
+    case "$h" in opencode|codex|command-code|pi|hermes) ;; *) IFS="$OLDIFS"; die 2 "NTFY_HARNESSES: unknown harness '$h'" ;; esac
+  done
+  IFS="$OLDIFS"
+fi
+if [ -n "${NTFY_TOPIC:-}" ]; then
+  case "$NTFY_TOPIC" in *[!A-Za-z0-9_-]* ) die 2 "NTFY_TOPIC must use letters, numbers, _ or -" ;; esac
+  [ "${#NTFY_TOPIC}" -le 64 ] || die 2 "NTFY_TOPIC must be at most 64 characters"
+  export NTFY_FORCE_TOPIC=1
 fi
 if [ -n "${NTFY_EVENTS:-}" ] && [ "$NTFY_EVENTS" != "all" ]; then
   OLDIFS="$IFS"; IFS=","
@@ -155,25 +164,15 @@ fi
 case "${NTFY_INSTALL_DEPS:-}" in ""|0|1) ;; *) die 2 "NTFY_INSTALL_DEPS must be 0 or 1" ;; esac
 case "${NTFY_SKIP_CONFIRM:-}" in ""|0|1) ;; *) die 2 "NTFY_SKIP_CONFIRM must be 0 or 1" ;; esac
 
-command -v node >/dev/null 2>&1 || die 3 "node not found — Nudge requires Node.js (https://nodejs.org), then re-run"
+command -v node >/dev/null 2>&1 || die 3 "node not found — OpenCode requires Node.js (https://nodejs.org), then re-run"
 
 # ------------------------------------------------------------------ banner
-say "Nudge installer"
-info "provisions a self-hosted ntfy server, wires your agents, sends a test push."
+say "opencode-ntfy installer"
+info "provisions a self-hosted ntfy server, wires the plugin, sends a test push."
 info "nothing changes until you answer the questions (Ctrl-C is safe)."
 
-if [ -n "${NTFY_HARNESSES:-}" ]; then
-  HARNESSES="$NTFY_HARNESSES"
-else
-  say "which agents should Nudge notify for?"
-  printf '  1) OpenCode and Codex\n  2) OpenCode only\n  3) Codex only\n'
-  menu "Choice" 1 2 3
-  case "$REPLY_V" in 1) HARNESSES=both ;; 2) HARNESSES=opencode ;; 3) HARNESSES=codex ;; esac
-fi
-info "agents: $HARNESSES"
-
 # ------------------------------------------------- step 1: access mode (+ branch inputs)
-say "1/5 — how should your phone reach the ntfy server?"
+say "1/6 — how should your phone reach the ntfy server?"
 if [ -n "${NTFY_MODE:-}" ]; then
   MODE="$NTFY_MODE"
   info "mode: $MODE (NTFY_MODE)"
@@ -216,7 +215,7 @@ case "$MODE" in
     fi
     ;;
   tailscale)
-    info "Tailscale login will be verified in preflight (step 2/5)"
+    info "Tailscale login will be verified in preflight (step 2/6)"
     ;;
 esac
 
@@ -227,13 +226,15 @@ if [ -f "$SCRIPT_DIR/scripts/setup-server.sh" ] && [ -f "$SCRIPT_DIR/src/index.t
   info "running from a checkout — the plugin will be wired to: $REPO_DIR"
 else
   REPO_DIR="${NTFY_PLUGIN_DIR:-$HOME/.local/share/opencode-ntfy}"
-  if [ ! -f "$REPO_DIR/scripts/setup-server.sh" ] || { [ "$HARNESSES" != "opencode" ] && [ ! -f "$REPO_DIR/scripts/codex-hook.mjs" ]; }; then
+  if [ -d "$REPO_DIR/.git" ] && [ -f "$REPO_DIR/scripts/setup-server.sh" ]; then
+    info "existing checkout found: $REPO_DIR (update it with git pull)"
+  else
     UPGRADE=0
     if [ -e "$REPO_DIR" ]; then
       [ -f "$REPO_DIR/scripts/setup-server.sh" ] || die 3 "$REPO_DIR exists but is not a complete plugin install — move it aside and re-run"
       UPGRADE=1
     fi
-    say "installing Nudge to $REPO_DIR"
+    say "installing the plugin to $REPO_DIR"
     mkdir -p "$(dirname "$REPO_DIR")"
     TMP_DIR="$(mktemp -d "$REPO_DIR.tmp.XXXXXX")" || die 3 "could not create install directory"
     trap 'if [ -n "${TMP_DIR:-}" ]; then rm -rf "$TMP_DIR"; fi' EXIT
@@ -246,11 +247,9 @@ else
       tar -xzf "$TMP_DIR/plugin.tar.gz" -C "$TMP_DIR" || die 3 "could not unpack plugin archive"
       rm "$TMP_DIR/plugin.tar.gz"
     fi
-    [ -f "$TMP_DIR/src/index.ts" ] && [ -f "$TMP_DIR/scripts/setup-server.sh" ] && [ -f "$TMP_DIR/scripts/codex-hook.mjs" ] && [ -f "$TMP_DIR/scripts/configure-opencode.mjs" ] || die 3 "downloaded plugin is incomplete"
-    if [ "$HARNESSES" != "codex" ] || [ "$UPGRADE" = 1 ]; then
-      command -v npm >/dev/null 2>&1 || die 3 "npm is required to install the OpenCode plugin dependency"
-      npm ci --omit=dev --ignore-scripts --prefix "$TMP_DIR" || die 3 "could not install the OpenCode plugin dependency"
-    fi
+    [ -f "$TMP_DIR/src/index.ts" ] && [ -f "$TMP_DIR/scripts/setup-server.sh" ] && [ -f "$TMP_DIR/scripts/install-harnesses.mjs" ] && [ -f "$TMP_DIR/scripts/configure-opencode.mjs" ] || die 3 "downloaded plugin is incomplete"
+    command -v npm >/dev/null 2>&1 || die 3 "npm is required to install the OpenCode plugin dependency"
+    npm ci --omit=dev --ignore-scripts --prefix "$TMP_DIR" || die 3 "could not install the OpenCode plugin dependency"
     if [ "$UPGRADE" = 1 ]; then
       OLD_DIR="$REPO_DIR.old.$$"
       [ ! -e "$OLD_DIR" ] || die 3 "backup path already exists: $OLD_DIR"
@@ -262,15 +261,13 @@ else
     fi
     TMP_DIR=""
     ok "plugin installed"
-  else
-    info "existing plugin install found: $REPO_DIR"
   fi
 fi
 SETUP="$REPO_DIR/scripts/setup-server.sh"
 [ -f "$SETUP" ] || die 3 "setup script missing at $SETUP"
 
 # ------------------------------------------------------------------ step 2: preflight loop
-say "2/5 — preflight (mode: $MODE) — verifies tools, logins, and a free port"
+say "2/6 — preflight (mode: $MODE) — verifies tools, logins, and a free port"
 PF_CODE=1
 attempt=1
 while [ "$attempt" -le 3 ]; do
@@ -396,14 +393,28 @@ if [ "$PF_CODE" != "0" ]; then
   die "$PF_CODE" "preflight still failing after $((attempt - 1)) attempt(s) — re-run this installer"
 fi
 
-# ------------------------------------------------- step 3: config scope
-say "3/5 — where should the plugin be configured?"
+# ------------------------------------------------- step 3: harnesses
+say "3/6 — which agents should send notifications?"
+if [ -n "${NTFY_HARNESSES:-}" ]; then
+  HARNESSES="$NTFY_HARNESSES"
+else
+  HARNESSES=""
+  for h in opencode codex command-code pi hermes; do
+    hdef=n; [ "$h" = opencode ] && hdef=y
+    if ask_yn "  + $h?" "$hdef"; then HARNESSES="${HARNESSES:+$HARNESSES,}$h"; fi
+  done
+fi
+[ -n "$HARNESSES" ] || die 2 "select at least one harness"
+info "agents: $HARNESSES"
+
+# ------------------------------------------------- step 4: config scope
+say "4/6 — where should the plugin be configured?"
 if [ -n "${NTFY_SCOPE:-}" ]; then
   SCOPE="$NTFY_SCOPE"
   info "scope: $SCOPE (NTFY_SCOPE)"
 else
-  printf '  1) global       — all projects\n'
-  printf '  2) this project — %s\n' "$PWD"
+  printf '  1) global       — %s (all projects)\n' "${NTFY_CONFIG_FILE:-$HOME/.config/opencode/opencode.json}"
+  printf '  2) this project — %s/opencode.json\n' "$PWD"
   menu "Choice" 1 2
   case "$REPLY_V" in
     1) SCOPE=global ;;
@@ -419,8 +430,8 @@ else
   CONFIG_FILE="$PWD/opencode.json"
 fi
 
-# ------------------------------------------------- step 4: which notifications
-say "4/5 — which notifications should reach your phone?"
+# ------------------------------------------------- step 5: which notifications
+say "5/6 — which notifications should reach your phone?"
 EV_ALL=1
 EV_LIST="question permission finished error custom"
 if [ -n "${NTFY_EVENTS:-}" ]; then
@@ -453,8 +464,8 @@ else
   fi
 fi
 
-# ------------------------------------------------- step 5: phone
-say "5/5 — which phone will subscribe?"
+# ------------------------------------------------- step 6: phone
+say "6/6 — which phone will subscribe?"
 if [ -n "${NTFY_PHONE:-}" ]; then
   PHONE="$NTFY_PHONE"
   info "phone: $PHONE (NTFY_PHONE)"
@@ -483,36 +494,60 @@ SERVER_URL="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).serverUr
 TOKEN="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).token)' "$SETUP_JSON")"
 ok "server ready: $SERVER_URL"
 
-# ------------------------------------------------------------------ write agent configs
-say "writing agent config"
-if [ "$SCOPE" = "global" ]; then CODEX_DIR="${CODEX_HOME:-$HOME/.codex}"; else CODEX_DIR="$PWD/.codex"; fi
-CODEX_CONFIG="$CODEX_DIR/nudge.json"
+# ------------------------------------------------------------------ write harness config
+say "writing plugin config"
+if [ "$SCOPE" = global ]; then CODEX_DIR="${CODEX_HOME:-$HOME/.codex}"; else CODEX_DIR="$PWD/.codex"; fi
 CODEX_HOOKS="$CODEX_DIR/hooks.json"
+CODEX_CONFIG="$CODEX_DIR/nudge.json"
 TOPIC_PROPOSED="$(node -e '
-var fs=require("fs"), path=require("path"), topic="";
-try { var c=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); topic=c.topic || ""; } catch (_) {}
-if (!topic) try {
-  var c=JSON.parse(fs.readFileSync(process.argv[2],"utf8"));
-  var entries=[...(c.plugin || []).map(function(e){return {path:e[0],options:e[1]};}), ...(c.plugins || []).map(function(e){return {path:e.package,options:e.options};})];
-  var found=entries.find(function(e){return typeof e.path==="string" && (e.path===process.argv[3] || path.basename(e.path)==="opencode-ntfy");});
-  topic=found && found.options && found.options.baseTopic || "";
-} catch (_) {}
-if (/^[A-Za-z0-9_-]{1,64}$/.test(topic)) process.stdout.write(topic);
-' "$CODEX_CONFIG" "$CONFIG_FILE" "$REPO_DIR")"
-[ -n "$TOPIC_PROPOSED" ] || TOPIC_PROPOSED="$(node -e 'process.stdout.write("nudge-"+require("crypto").randomBytes(5).toString("hex"))')"
+var fs=require("fs"), path=require("path"), crypto=require("crypto"), topic=process.env.NTFY_TOPIC || "";
+function read(file) { try { return JSON.parse(fs.readFileSync(file,"utf8")); } catch { return {}; } }
+var selected=(process.argv[3] || "").split(",");
+if (!topic && selected.includes("codex")) topic=read(process.argv[2]).topic || "";
+if (!topic) {
+  var c=read(process.argv[1]);
+  var entries=[...(c.plugin || []).map(e=>({path:e[0],options:e[1]})),...(c.plugins || []).map(e=>({path:e.package,options:e.options}))];
+  topic=entries.find(e=>typeof e.path==="string" && (e.path===process.argv[4] || path.basename(e.path)==="opencode-ntfy"))?.options?.baseTopic || "";
+}
+if (!topic) {
+  var home=process.env.HOME, cwd=process.cwd(), key=crypto.createHash("sha256").update(cwd).digest("hex");
+  var file=process.argv[5]==="project" ? path.join(home,".config/ntfy-archive/projects",key+".json") : path.join(home,".config/ntfy-archive/config.json");
+  topic=read(file).baseTopic || "";
+}
+process.stdout.write(topic || "nudge-"+crypto.randomBytes(5).toString("hex"));
+' "$CONFIG_FILE" "$CODEX_CONFIG" "$HARNESSES" "$REPO_DIR" "$SCOPE")"
 export NTFY_W="$SERVER_URL|$TOKEN|$TOPIC_PROPOSED|$EV_ALL|$EV_LIST"
 TOPIC="$TOPIC_PROPOSED"
-if [ "$HARNESSES" != "codex" ]; then
-  TOPIC="$(node "$REPO_DIR/scripts/configure-opencode.mjs" "$CONFIG_FILE" "$REPO_DIR")" || die $? "writing $CONFIG_FILE failed"
-  ok "config written: $CONFIG_FILE"
-fi
-if [ "$HARNESSES" != "opencode" ]; then
-  [ -f "$REPO_DIR/scripts/configure-codex.mjs" ] && [ -f "$REPO_DIR/scripts/codex-hook.mjs" ] || die 3 "Codex support missing from $REPO_DIR"
-  node "$REPO_DIR/scripts/configure-codex.mjs" "$CODEX_HOOKS" "$CODEX_CONFIG" "$REPO_DIR/scripts/codex-hook.mjs" "$TOPIC" || die 3 "writing Codex hooks failed"
-  ok "Codex hooks written: $CODEX_HOOKS"
-  info "in Codex, open /hooks and trust the Nudge Stop and PermissionRequest hooks"
-fi
-ok "topic (kept if this was installed before): $TOPIC"
+case ",$HARNESSES," in
+  *,opencode,*)
+    [ -f "$REPO_DIR/scripts/configure-opencode.mjs" ] || die 3 "OpenCode support missing from $REPO_DIR"
+    TOPIC="$(node "$REPO_DIR/scripts/configure-opencode.mjs" "$CONFIG_FILE" "$REPO_DIR")" || die $? "writing $CONFIG_FILE failed"
+    ok "config written: $CONFIG_FILE"
+    ;;
+esac
+case "$HARNESSES" in
+  opencode) ;;
+  *)
+    export NTFY_SERVER_URL="$SERVER_URL" NTFY_TOKEN="$TOKEN" NTFY_TOPIC="$TOPIC"
+    if [ "$EV_ALL" = 1 ]; then export NTFY_EVENTS=all
+    else export NTFY_EVENTS="$(printf '%s' "$EV_LIST" | tr ' ' ',')"; fi
+    INSTALL_OUTPUT="$(node "$REPO_DIR/scripts/install-harnesses.mjs" "$REPO_DIR" "$SCOPE" "$HARNESSES")" || die 2 "harness install failed"
+    printf '%s\n' "$INSTALL_OUTPUT"
+    TOPIC="$(printf '%s\n' "$INSTALL_OUTPUT" | sed -n 's/^topic: //p')"
+    [ -n "$TOPIC" ] || die 5 "harness installer did not report a topic"
+    case ",$HARNESSES," in *,opencode,*) ;; *) CONFIG_FILE="${INSTALL_OUTPUT##*config: }"; ok "config written: $CONFIG_FILE" ;; esac
+    ;;
+esac
+ok "topic: $TOPIC"
+case ",$HARNESSES," in
+  *,codex,*)
+    [ -f "$REPO_DIR/scripts/configure-codex.mjs" ] && [ -f "$REPO_DIR/scripts/codex-hook.mjs" ] || die 3 "Codex support missing from $REPO_DIR"
+    node "$REPO_DIR/scripts/configure-codex.mjs" "$CODEX_HOOKS" "$CODEX_CONFIG" "$REPO_DIR/scripts/codex-hook.mjs" "$TOPIC" || die 3 "writing Codex hooks failed"
+    ok "Codex hooks written: $CODEX_HOOKS"
+    info "Codex config: $CODEX_CONFIG"
+    info "in Codex, open /hooks and trust the Nudge Stop and PermissionRequest hooks"
+    ;;
+esac
 
 # ------------------------------------------------------------------ phone instructions
 cat <<EOF
@@ -542,7 +577,7 @@ if [ "${NTFY_SKIP_CONFIRM:-}" != "1" ]; then
   printf '\nPress Enter when the phone is subscribed... '
   read -r REPLY_V || die 2 "no input (set NTFY_SKIP_CONFIRM=1 to script this)"
 fi
-TEST_BODY="{\"topic\":\"$TOPIC\",\"title\":\"🎉 Nudge setup\",\"message\":\"Notifications are live — this is the install test push.\",\"tags\":[\"tada\"]}"
+TEST_BODY="{\"topic\":\"$TOPIC\",\"title\":\"🎉 opencode-ntfy setup\",\"message\":\"Notifications are live — this is the install test push.\",\"tags\":[\"tada\"]}"
 TEST_CODE="$(curl -s -o /dev/null -w '%{http_code}' -m 10 \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d "$TEST_BODY" "$SERVER_URL/" || printf '000')"
@@ -569,27 +604,21 @@ fi
 say "done — Nudge is installed"
 info "server: $SERVER_URL   (mode: $MODE, port: ${NTFY_PORT:-80})"
 info "topic:  $TOPIC   (one topic for all kinds — D9)"
-if [ "$HARNESSES" != "codex" ]; then info "OpenCode config: $CONFIG_FILE"; fi
-if [ "$HARNESSES" != "opencode" ]; then info "Codex config: $CODEX_CONFIG"; fi
+info "agents: $HARNESSES (restart each selected agent once)"
+info "config: $CONFIG_FILE"
 info "plugin: $REPO_DIR"
-if [ "$HARNESSES" != "codex" ]; then
 cat <<EOF
 
-OpenCode event settings are in $CONFIG_FILE:
+Customize later in $CONFIG_FILE (defaults are already right for most people):
   "events": {
     "question":  { "priority": "urgent", "tags": ["question"] },
     "finished":  { "enabled": false },
     "error":     { "priority": "high" }
   }
-EOF
-fi
-if [ "$HARNESSES" != "opencode" ]; then
-  info "Codex: open /hooks, review and trust Nudge's two hooks before alerts can fire."
-fi
-cat <<EOF
 
 Switch access modes later:  re-run this installer (or scripts/setup-server.sh <mode>),
 then RE-SUBSCRIBE the phone — subscriptions are keyed by server URL (wake hash).
-Uninstall: remove Nudge's agent entries; the server can be removed with:
+Uninstall: remove the selected agents' loader files and config; see UNINSTALL.md
+for OpenCode/server removal. The server can be removed with:
   docker compose -f \$HOME/ntfy/docker-compose.yml down
 EOF

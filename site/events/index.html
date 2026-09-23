@@ -1,0 +1,22 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Notifications — Nudge</title><meta name="description" content="The notification events Nudge sends to your phone." /><meta name="color-scheme" content="dark" /><meta name="theme-color" content="#10131d" />
+<link rel="icon" type="image/png" href="/assets/nudge-bird.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin /><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@10..48,75..100,200..800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" /><link rel="stylesheet" href="/assets/css/site.css" /></head><body>
+<a class="skip" href="#main">Skip to content</a>
+    <header class="nav" data-nav><div class="container nav__inner">
+      <a class="brand" href="/" aria-label="Nudge, home"><img class="brand__mark" src="/assets/nudge-bird.png" alt="" width="28" height="28" /><span class="brand__name">Nudge</span></a>
+      <nav class="nav__links" aria-label="Primary"><a href="/install/">Install</a><a href="/events/" aria-current="page">Notifications</a><a href="/how/">How it works</a><a href="/docs/">Docs</a></nav>
+    </div></header>
+<main id="main">
+<section class="section"><div class="container"><div class="sec-head"><span class="eyebrow">What lands on the phone</span><h1 class="h2">Five kinds, <strong>one topic.</strong></h1><p class="sec-sub">Every notification arrives on one private topic. Its kind appears in the title, emoji tag, and priority.</p></div>
+<div class="tablewrap" tabindex="0" role="region" aria-label="Notification types and triggers"><table class="table"><caption class="sr-only">Notification types, triggers, and examples</caption><thead><tr><th scope="col">Kind</th><th scope="col">When it fires</th><th scope="col">Example</th></tr></thead><tbody>
+<tr><td>❓ Question</td><td>The agent asks something or ends a turn asking for input. Forms count too.</td><td><code>Pick environment · staging | prod</code></td></tr>
+<tr><td>🔒 Permission</td><td>The agent waits for your approval.</td><td><code>read · config.json</code></td></tr>
+<tr><td>✅ Finished</td><td>A turn completes without a question.</td><td><code>Done in 1m 52s · 9 tools</code></td></tr>
+<tr><td>🚨 Error</td><td>A session or tool call fails. Repeats collapse for 60 seconds.</td><td><code>shell failed · ECONNRESET</code></td></tr>
+<tr><td>📣 Custom</td><td>The agent calls the <code>ntfy_notify</code> tool.</td><td><code>Whatever the agent wrote</code></td></tr>
+</tbody></table></div><p class="muted mt-2">Question and permission alerts are urgent; errors are high priority; finished alerts use the default priority.</p></div></section>
+</main>
+    <footer class="footer"><div class="container"><div class="footer__base footer__base--solo"><span>MIT licensed</span><span><a href="/">Nudge</a> · <a href="/docs/">Documentation</a></span></div></div></footer>
+<script src="/assets/js/site.js" defer></script>
+</body></html>

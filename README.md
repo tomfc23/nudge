@@ -1,32 +1,12 @@
 # Nudge
 
-# Nudge sends [ntfy](https://ntfy.sh) push notifications from [OpenCode](https://opencode.ai) and Codex
-to your phone. OpenCode alerts you when it
-needs you — **questions & permission requests**, **finished tasks**, and **errors** — plus an
-`ntfy_notify` tool so the agent itself can ping you.
+Get [ntfy](https://ntfy.sh) push notifications on your phone when OpenCode, Codex, Command Code, Pi, or Hermes
+needs you — **questions & permission requests**, **finished tasks**, and **errors**. OpenCode,
+Command Code, Pi, and Hermes also get an `ntfy_notify` tool for custom pings.
 
 Works with your **self-hosted ntfy server** and the official **ntfy iOS/Android app**.
 
-## Install OpenCode, Codex, or both
-
-Run `sh install.sh` from a checkout, or download it from `https://nudge.tommyek.com/install.sh`.
-The wizard asks which agents to configure; `NTFY_HARNESSES=both|opencode|codex` selects one non-interactively.
-Both agents share one server and phone topic. For Codex, the installer adds `Stop` and
-`PermissionRequest` entries to your existing `~/.codex/hooks.json` (or the current
-project's `.codex/hooks.json`) and stores the ntfy token in a mode-0600 `nudge.json`.
-Open Codex's `/hooks` screen once to review and trust the new hooks. Codex requires
-this for [non-managed hooks](https://developers.openai.com/codex/hooks); until trusted,
-Codex skips them. Existing hooks and the `notify` command stay in place.
-
-Codex currently sends **finished**, **question** (when its final reply asks one), and
-**permission** notifications. OpenCode also supports tool/session **errors** and the
-`ntfy_notify` custom tool. Codex's hook data does not provide the same OpenCode event
-stream, so these latter two features are OpenCode-only.
-Codex permission pings are muted when global `approvals_reviewer = "auto_review"` is set
-or the hook reports Full access/never ask. Codex does not expose per-chat reviewer overrides
-to hooks, so a chat set to Ask while the global setting is Auto-review remains muted.
-
-## OpenCode manual setup
+## Quick start (5 minutes)
 
 ### 1. Run an ntfy server
 
@@ -92,7 +72,7 @@ generated and persisted automatically on first run.
 
 ```
 [ntfy] server: http://your-server-ip
-[ntfy] subscribe in your ntfy app → server http://your-server-ip , topic: opencode-1a2b3c4d5e
+[ntfy] subscribe in your ntfy app → server http://your-server-ip , topic: nudge-1a2b3c4d5e
 ```
 
 4. Subscribe to that one topic in the app (the topic = the random-looking name; anyone who
@@ -163,12 +143,44 @@ curl -fsSL https://nudge.tommyek.com/install.sh -o install.sh && sh install.sh
 ```
 
 The website serves the plugin archive used by the downloaded installer; no Git checkout is needed.
-`sh install.sh` asks which agents to configure, then walks through access mode,
-config scope, notifications, and phone. It installs missing tools *with your consent*,
-provisions the server, writes the selected agent configs, and sends a test push you confirm on the
+`sh install.sh` asks six quick questions (access mode, agents,
+config scope, which notifications, phone), installs missing tools *with your consent*,
+provisions the server, wires the selected agents, and sends a test push you confirm on the
 phone. Every question has an env override (`NTFY_MODE=cloudflare CF_HOSTNAME=... sh
 install.sh`), so an agent can drive the exact same wizard non-interactively — or just
-hand [`INSTALL.md`](./INSTALL.md) to your agent and answer its questions in chat.
+hand [`INSTALL.md`](./INSTALL.md) to your agent and answer its questions in chat
+(SPEC §14).
+
+Select multiple agents with `NTFY_HARNESSES=opencode,codex,command-code,pi,hermes`.
+`nudge-agent` manages the same install from the terminal. Install it with
+`npm install -g nudge-agent`, or `brew tap tomfc23/nudge && brew install nudge-agent`:
+
+```bash
+nudge-agent install --harness opencode,pi,hermes
+nudge-agent status
+nudge-agent add command-code
+nudge-agent remove pi
+nudge-agent update
+```
+
+The CLI is optional; `sh install.sh` works without it. See [CLI usage](cli/README.md).
+Codex uses `Stop` and `PermissionRequest` hooks. After installation, open `/hooks`
+in Codex and trust the Nudge hooks. Codex sends finished, question, and permission
+notifications.
+The installer places a [Command Code mod](https://commandcode.ai/docs/mods), a
+[Pi extension](https://pi.dev/docs/latest/extensions), and a
+[Hermes plugin](https://hermes-agent.nousresearch.com/docs/user-guide/features/plugins)
+in their documented load paths. They share one ntfy topic. Global settings live in
+`~/.config/ntfy-archive/config.json`; project settings live under
+`~/.config/ntfy-archive/projects/` so the token stays outside the repository.
+Restart the selected agent after installation. Command Code and Pi project extensions
+load after project trust; Hermes is installed at user scope and reads the current
+project's settings. Command Code reports denied tool calls as permission notices;
+Pi has no built-in permission prompt event. Hermes reports approval requests.
+Use `nudge-agent remove <harness>` to unwire one agent, or follow
+[UNINSTALL.md](UNINSTALL.md) to remove all integrations and the server.
+Full uninstall leaves `~/.config/ntfy-archive` settings for manual review because
+multiple harnesses may share them.
 
 For a single mode — or full control — one script provisions any of them:
 
@@ -210,33 +222,6 @@ If detection can't see your intent (e.g. the plugin publishes via `http://127.0.
 while the phone uses a tunnel URL), set `"accessMode": "local" | "tailscale" | "cloudflare"`
 explicitly in the options.
 
-## Managing Nudge
-
-Already installed? The `nudge-agent` CLI wraps the scripts above, so you don't have to
-remember paths:
-
-```bash
-npm install -g nudge-agent      # or: brew tap tomfc23/nudge && brew install nudge-agent
-```
-
-| Command | What it does |
-|---|---|
-| `nudge-agent install` | runs the wizard (same as `sh install.sh`) |
-| `nudge-agent status [--json]` | what is wired up right now — per harness, server reachability, and whether Codex has actually *trusted* the hooks |
-| `nudge-agent update [--dry-run]` | `git pull` for a checkout, re-runs the installer for an archive install |
-| `nudge-agent add <opencode\|codex>` | wires one more harness, copying `serverUrl`/`token`/`topic` from the harness already configured. Asks global or project unless `--global`/`--project` says |
-| `nudge-agent remove <opencode\|codex>` | unwires one harness — the other and the server are untouched |
-| `nudge-agent uninstall [--level 1\|2\|3]` | delegates to `scripts/uninstall.sh`; level 3 also wipes server data and needs `--yes` |
-
-Exit codes match the scripts (`0` ok · `2` usage/input · `3` missing or partial · `4` conflict
-· `5` runtime). The CLI is only a dispatcher — it calls the scripts in the plugin
-directory, so `install.sh` / `setup-server.sh` / `uninstall.sh` stay the single
-implementation, and nothing but the CLI itself is published anywhere.
-
-By default the installer is fetched from `raw.githubusercontent.com/tomfc23/nudge/main` and the
-plugin is cloned from this repo. Set `NTFY_SITE_URL` to use a website's `install.sh` +
-`plugin.tar.gz` instead.
-
 ## What you get
 
 | Event | Trigger | Caption (what you see without opening anything) | Priority |
@@ -269,7 +254,7 @@ All keys are optional — defaults shown:
       "options": {
         "serverUrl": "http://your-server-ip",
         "token": "{env:NTFY_TOKEN}",
-        "baseTopic": "opencode-mytopic",
+        "baseTopic": "nudge-mytopic",
         "accessMode": "auto",
 
         "events": {
@@ -277,7 +262,8 @@ All keys are optional — defaults shown:
                         "idleMode": "heuristic", "patterns": ["\\\\bshould i\\\\b", "…"] },
           "finished": { "enabled": true, "priority": "default", "tags": ["heavy_check_mark"] },
           "error":    { "enabled": true, "priority": "high", "tags": ["rotating_light"], "cooldownSec": 60 },
-          "permission": { "enabled": true, "priority": "urgent", "tags": ["lock"] }
+          "permission": { "enabled": true, "priority": "urgent", "tags": ["lock"] },
+          "custom": { "enabled": true, "priority": "default", "tags": [] }
         },
 
         "dedupeWindowMs": 10000,
@@ -330,5 +316,7 @@ It skips the dedupe rules (deliberate sends always go through).
 ```bash
 npm install
 npm run typecheck
-npm test          # OpenCode event flow, installer/uninstaller contracts, Codex hooks, nudge-agent CLI
+npm test          # 88 tests: classifier, captions, config/token chain, access modes, end-to-end event→publish flow, dedupe/sharing, tool, setup-server.sh + install.sh + uninstall.sh + site archive + UNINSTALL.md contracts
 ```
+
+Design rationale and decision log: [SPEC.md](./SPEC.md).
