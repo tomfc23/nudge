@@ -246,7 +246,7 @@ else
       tar -xzf "$TMP_DIR/plugin.tar.gz" -C "$TMP_DIR" || die 3 "could not unpack plugin archive"
       rm "$TMP_DIR/plugin.tar.gz"
     fi
-    [ -f "$TMP_DIR/src/index.ts" ] && [ -f "$TMP_DIR/scripts/setup-server.sh" ] && [ -f "$TMP_DIR/scripts/codex-hook.mjs" ] || die 3 "downloaded plugin is incomplete"
+    [ -f "$TMP_DIR/src/index.ts" ] && [ -f "$TMP_DIR/scripts/setup-server.sh" ] && [ -f "$TMP_DIR/scripts/codex-hook.mjs" ] && [ -f "$TMP_DIR/scripts/configure-opencode.mjs" ] || die 3 "downloaded plugin is incomplete"
     if [ "$HARNESSES" != "codex" ] || [ "$UPGRADE" = 1 ]; then
       command -v npm >/dev/null 2>&1 || die 3 "npm is required to install the OpenCode plugin dependency"
       npm ci --omit=dev --ignore-scripts --prefix "$TMP_DIR" || die 3 "could not install the OpenCode plugin dependency"
@@ -503,51 +503,8 @@ if (/^[A-Za-z0-9_-]{1,64}$/.test(topic)) process.stdout.write(topic);
 export NTFY_W="$SERVER_URL|$TOKEN|$TOPIC_PROPOSED|$EV_ALL|$EV_LIST"
 TOPIC="$TOPIC_PROPOSED"
 if [ "$HARNESSES" != "codex" ]; then
-TOPIC="$(node -e '
-var fs = require("fs"), path = require("path");
-var file = process.argv[1], pluginPath = process.argv[2];
-var p = (process.env.NTFY_W || "").split("|");
-var serverUrl = p[0], token = p[1], proposed = p[2], evAll = p[3], evList = p[4] || "";
-var ALL = ["question", "permission", "finished", "error", "custom"];
-var enabled = evAll === "1" ? ALL : evList.split(" ").filter(Boolean);
-var cfg = {};
-try { cfg = JSON.parse(fs.readFileSync(file, "utf8")); }
-catch (e) { if (e && e.code !== "ENOENT") { console.error("cannot parse " + file + ": " + e.message); process.exit(2); } }
-if (cfg.plugin !== undefined && !Array.isArray(cfg.plugin)) { console.error(file + ": \"plugin\" is not an array"); process.exit(2); }
-if (cfg.plugins !== undefined && !Array.isArray(cfg.plugins)) { console.error(file + ": \"plugins\" is not an array"); process.exit(2); }
-function mine(v) { return typeof v === "string" && (v === pluginPath || path.basename(v) === "opencode-ntfy"); }
-var entry = null, form = null;
-if (Array.isArray(cfg.plugin)) { cfg.plugin.forEach(function (e) { if (!entry && Array.isArray(e) && mine(e[0])) { entry = e; form = "plugin"; } }); }
-if (!entry && Array.isArray(cfg.plugins)) { cfg.plugins.forEach(function (e) { if (!entry && e && mine(e.package)) { entry = e; form = "plugins"; } }); }
-if (!entry) {
-  if (!Array.isArray(cfg.plugin)) cfg.plugin = [];
-  if (form === "plugins") { entry = { package: pluginPath, options: {} }; cfg.plugins.push(entry); }
-  else { entry = [pluginPath, {}]; cfg.plugin.push(entry); form = "plugin"; }
-}
-var opts = form === "plugin" ? (entry[1] = entry[1] || {}) : (entry.options = entry.options || {});
-opts.serverUrl = serverUrl;
-opts.token = token;
-opts.baseTopic = (typeof opts.baseTopic === "string" && opts.baseTopic) ? opts.baseTopic : proposed;
-var ev = (opts.events && typeof opts.events === "object") ? opts.events : {};
-ALL.forEach(function (k) {
-  if (enabled.indexOf(k) === -1) {
-    ev[k] = Object.assign({}, ev[k], { enabled: false });
-  } else if (ev[k] && ev[k].enabled === false) {
-    delete ev[k].enabled;
-    if (ev[k] && Object.keys(ev[k]).length === 0) delete ev[k];
-  }
-});
-if (Object.keys(ev).length > 0) opts.events = ev; else delete opts.events;
-fs.mkdirSync(path.dirname(file), { recursive: true });
-fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + "\n");
-var back = JSON.parse(fs.readFileSync(file, "utf8"));
-var ok = form === "plugin"
-  ? Array.isArray(back.plugin) && back.plugin.some(function (e) { return Array.isArray(e) && mine(e[0]); })
-  : Array.isArray(back.plugins) && back.plugins.some(function (e) { return e && mine(e.package); });
-if (!ok) { console.error("config verification failed for " + file); process.exit(5); }
-process.stdout.write(opts.baseTopic);
-' "$CONFIG_FILE" "$REPO_DIR")" || die $? "writing $CONFIG_FILE failed"
-ok "config written: $CONFIG_FILE"
+  TOPIC="$(node "$REPO_DIR/scripts/configure-opencode.mjs" "$CONFIG_FILE" "$REPO_DIR")" || die $? "writing $CONFIG_FILE failed"
+  ok "config written: $CONFIG_FILE"
 fi
 if [ "$HARNESSES" != "opencode" ]; then
   [ -f "$REPO_DIR/scripts/configure-codex.mjs" ] && [ -f "$REPO_DIR/scripts/codex-hook.mjs" ] || die 3 "Codex support missing from $REPO_DIR"

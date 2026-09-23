@@ -818,6 +818,117 @@ async function main() {
     assert.ok(!/^[^\n]*\\[ \t]+#/m.test(md), "INSTALL.md: comment after line-continuation backslash")
   })
 
+  console.log("configure-opencode.mjs contract (add / remove / scan)")
+  const cfgTool = fileURLToPath(new URL("../scripts/configure-opencode.mjs", import.meta.url))
+  const CFG_REPO = fileURLToPath(new URL("../", import.meta.url)).replace(/\/+$/, "")
+  const CFG_SETTINGS = "https://s.example.com|tk_fixture0000000000000000000|nudge-abc123|1|"
+  const tmpCfg = (cfg: unknown): string => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "ntfy-cfg-"))
+    const f = path.join(dir, "opencode.json")
+    if (cfg !== undefined) writeFileSync(f, JSON.stringify(cfg, null, 2) + "\n")
+    return f
+  }
+  const dropCfg = (f: string) => rmSync(path.dirname(f), { recursive: true, force: true })
+  const readCfg = (f: string): any => JSON.parse(readFileSync(f, "utf8"))
+  const runCfgTool = (args: string[], env: Record<string, string> = {}) =>
+    spawnSync("node", [cfgTool, ...args], { encoding: "utf8", env: { ...process.env, ...env }, timeout: 30000 })
+
+  await test("add: writes our tuple entry, keeps foreign plugins and sibling keys", () => {
+    const f = tmpCfg({ $schema: "x", plugin: ["foreign-plugin"], provider: { keep: true } })
+    try {
+      const r = runCfgTool([f, CFG_REPO], { NTFY_W: CFG_SETTINGS })
+      assert.equal(r.status, 0, r.stderr)
+      assert.equal(r.stdout, "nudge-abc123", "add prints the resulting topic")
+      const cfg = readCfg(f)
+      assert.deepEqual(cfg.plugin[0], "foreign-plugin", "foreign entry preserved")
+      assert.equal(cfg.plugin[1][0], CFG_REPO)
+      assert.equal(cfg.plugin[1][1].serverUrl, "https://s.example.com")
+      assert.equal(cfg.plugin[1][1].baseTopic, "nudge-abc123")
+      assert.deepEqual(cfg.provider, { keep: true }, "sibling keys preserved")
+      assert.equal(cfg.$schema, "x")
+    } finally {
+      dropCfg(f)
+    }
+  })
+
+  await test("add: re-running keeps the existing baseTopic and never duplicates the entry", () => {
+    const f = tmpCfg({ plugin: [[CFG_REPO, { baseTopic: "nudge-existing" }]] })
+    try {
+      const r = runCfgTool([f, CFG_REPO], { NTFY_W: CFG_SETTINGS })
+      assert.equal(r.stdout, "nudge-existing", "an installed topic is never regenerated")
+      const cfg = readCfg(f)
+      assert.equal(cfg.plugin.length, 1, "no duplicate entry")
+      assert.equal(cfg.plugin[0][1].baseTopic, "nudge-existing")
+    } finally {
+      dropCfg(f)
+    }
+  })
+
+  await test("add: updates an existing object-form entry in plugins", () => {
+    const f = tmpCfg({ plugins: [{ package: CFG_REPO, options: { baseTopic: "nudge-obj" } }] })
+    try {
+      const r = runCfgTool([f, CFG_REPO], { NTFY_W: CFG_SETTINGS })
+      assert.equal(r.status, 0, r.stderr)
+      assert.equal(r.stdout, "nudge-obj")
+      const options = readCfg(f).plugins[0].options
+      assert.equal(options.serverUrl, "https://s.example.com")
+      assert.equal(options.baseTopic, "nudge-obj")
+    } finally {
+      dropCfg(f)
+    }
+  })
+
+  await test("add: disabled kinds are recorded as enabled:false", () => {
+    const f = tmpCfg({})
+    try {
+      runCfgTool([f, CFG_REPO], { NTFY_W: "https://s.example.com|tk_x|nudge-abc|0|question finished" })
+      const events = readCfg(f).plugin[0][1].events
+      assert.deepEqual(Object.keys(events).sort(), ["custom", "error", "permission"])
+      for (const kind of ["custom", "error", "permission"]) assert.equal(events[kind].enabled, false)
+    } finally {
+      dropCfg(f)
+    }
+  })
+
+  await test("add: unparseable config → exit 2 and the file is left untouched", () => {
+    const f = tmpCfg(undefined)
+    writeFileSync(f, "{ not json")
+    try {
+      const r = runCfgTool([f, CFG_REPO], { NTFY_W: CFG_SETTINGS })
+      assert.equal(r.status, 2)
+      assert.match(r.stderr, /cannot parse/)
+      assert.equal(readFileSync(f, "utf8"), "{ not json")
+    } finally {
+      dropCfg(f)
+    }
+  })
+
+  await test("--scan: present / absent, and it never rewrites", () => {
+    const f = tmpCfg({ plugin: [[CFG_REPO, { serverUrl: "https://s", baseTopic: "t" }]] })
+    try {
+      const present = runCfgTool(["--scan", f, CFG_REPO])
+      assert.equal(present.status, 0)
+      assert.match(present.stdout, /^present\t1 entry\/entries: /)
+      assert.deepEqual(Object.keys(readCfg(f)), ["plugin"], "scan is read-only")
+      const absent = runCfgTool(["--scan", path.join(path.dirname(f), "missing.json"), CFG_REPO])
+      assert.match(absent.stdout, /^absent\tfile not present/)
+    } finally {
+      dropCfg(f)
+    }
+  })
+
+  await test("--remove: strips only our entry, foreign entries survive", () => {
+    const f = tmpCfg({ plugin: ["foreign-plugin", [CFG_REPO, { serverUrl: "https://s", baseTopic: "t" }]] })
+    try {
+      const r = runCfgTool(["--remove", f, CFG_REPO])
+      assert.equal(r.status, 0)
+      assert.match(r.stdout, /^removed\t1 entry\/entries removed: /)
+      assert.deepEqual(readCfg(f).plugin, ["foreign-plugin"])
+    } finally {
+      dropCfg(f)
+    }
+  })
+
   console.log("uninstall.sh contract (SPEC §15)")
   const uninst = fileURLToPath(new URL("../scripts/uninstall.sh", import.meta.url))
   const REPO = fileURLToPath(new URL("../", import.meta.url)).replace(/\/+$/, "")
