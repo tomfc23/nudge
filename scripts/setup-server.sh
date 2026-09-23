@@ -526,13 +526,33 @@ fi
 [ -n "$TOKEN" ] || die 5 "could not create/access an access token"
 info "token: $TOKEN"
 
+# A public URL trails provisioning: Cloudflare answers 530 (error 1033) until the
+# new hostname is live at the edge, and Tailscale Serve's first request races
+# proxy warm-up (SPEC §14.5). Poll instead of judging request #1.
+# Sets PUB_CODE (not stdout — this reports progress, and a command substitution
+# would swallow that line into the captured value).
+public_publish() { # <url> <body>
+  local try=1 tries=1
+  case "$MODE" in cloudflare|tailscale) tries=15 ;; esac
+  PUB_CODE=""
+  while :; do
+    PUB_CODE="$(curl -s -o /dev/null -w '%{http_code}' -m 10 -H "Authorization: Bearer $TOKEN" -d "$2" "$1" || true)"
+    if [ "$PUB_CODE" = "200" ]; then break; fi
+    if [ "$try" -ge "$tries" ]; then break; fi
+    if [ "$try" = 1 ]; then info "waiting for $1 to answer (HTTP $PUB_CODE) — DNS/tunnel warm-up..."; fi
+    try=$((try + 1))
+    sleep 3
+  done
+}
+
 # ---------------------------------------------------------------- smoke tests
 say "smoking test auth"
 ANON="$(curl -s -o /dev/null -w '%{http_code}' -m 5 -d 'anon' "http://127.0.0.1:$NTFY_PORT/opencode-setup-check" || true)"
 [ "$ANON" = "403" ] || die 5 "anonymous publish should be denied (got HTTP $ANON — is auth-default-access correct?)"
 AUTH="$(curl -s -o /dev/null -w '%{http_code}' -m 5 -H "Authorization: Bearer $TOKEN" -d 'ok' "http://127.0.0.1:$NTFY_PORT/opencode-setup-check" || true)"
 [ "$AUTH" = "200" ] || die 5 "token publish failed (HTTP $AUTH)"
-PUB="$(curl -s -o /dev/null -w '%{http_code}' -m 10 -H "Authorization: Bearer $TOKEN" -d 'setup-ok' "$BASE_URL/opencode-setup-check" || true)"
+public_publish "$BASE_URL/opencode-setup-check" 'setup-ok'
+PUB="$PUB_CODE"
 if [ "$PUB" != "200" ]; then
   info "WARNING: publish via $BASE_URL returned HTTP $PUB (phone may not reach this URL yet)"
   add_warning "public-url-unreachable" "publish via $BASE_URL returned HTTP $PUB"

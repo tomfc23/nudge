@@ -5,7 +5,7 @@
 
 import assert from "node:assert/strict"
 import { spawn, spawnSync } from "node:child_process"
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import net from "node:net"
 import os from "node:os"
 import path from "node:path"
@@ -805,6 +805,87 @@ async function main() {
     assert.equal(r.status, 2)
     assert.match(r.stderr, /no input/)
     assert.match(r.stderr, /NTFY_\* env overrides/)
+  })
+
+  // The test push trails provisioning: Cloudflare answers 530 (error 1033) until the
+  // new hostname is live at the edge, so a one-shot push reported a transient 530 as a
+  // failure. Runs the real install.sh from a fixture checkout (no clone, no npm) whose
+  // setup-server.sh reports success, with curl/sleep shimmed to script the codes.
+  const runWizard = (codes: string[]) => {
+    const home = mkdtempSync(path.join(os.tmpdir(), "ntfy-wizard-"))
+    const dir = path.join(home, "checkout")
+    const bin = path.join(home, "bin")
+    const st = path.join(home, "state")
+    mkdirSync(path.join(dir, "src"), { recursive: true })
+    mkdirSync(path.join(dir, "scripts"), { recursive: true })
+    mkdirSync(bin, { recursive: true })
+    mkdirSync(st, { recursive: true })
+    copyFileSync(inst, path.join(dir, "install.sh")) // SCRIPT_DIR → this fixture checkout
+    writeFileSync(path.join(dir, "src/index.ts"), "export {}\n")
+    writeFileSync(
+      path.join(dir, "scripts/setup-server.sh"),
+      [
+        "#!/bin/sh",
+        'for a in "$@"; do if [ "$a" = preflight ]; then exit 0; fi; done',
+        `printf '%s\\n' '{"ok":true,"serverUrl":"https://ntfy.example.test","token":"tk_fixture"}'`,
+        "",
+      ].join("\n"),
+    )
+    writeFileSync(path.join(dir, "scripts/configure-opencode.mjs"), "process.stdout.write('nudge-fixture\\n')\n")
+    writeFileSync(path.join(st, "codes"), `${codes.join("\n")}\n`)
+    const shim = (name: string, body: string) => {
+      writeFileSync(path.join(bin, name), `#!/bin/sh\n${body}\n`)
+      chmodSync(path.join(bin, name), 0o755)
+    }
+    // curl: prints the scripted code for this call, the last one repeating.
+    shim("curl", [
+      `n=$(cat "${st}/n" 2>/dev/null || echo 0)`,
+      "n=$((n + 1))",
+      `printf '%s\\n' "$n" > "${st}/n"`,
+      `code=$(sed -n "\${n}p" "${st}/codes")`,
+      `[ -n "$code" ] || code=$(tail -n 1 "${st}/codes")`,
+      'printf "%s" "$code"',
+    ].join("\n"))
+    shim("sleep", "exit 0")
+    const result = spawnSync("bash", [path.join(dir, "install.sh")], {
+      encoding: "utf8",
+      cwd: home,
+      timeout: 20000,
+      env: {
+        ...process.env,
+        ...cleanEnv(),
+        NTFY_MODE: "cloudflare",
+        CF_HOSTNAME: "ntfy.example.test",
+        NTFY_HARNESSES: "opencode",
+        NTFY_SCOPE: "global",
+        NTFY_EVENTS: "all",
+        NTFY_PHONE: "none",
+        NTFY_INSTALL_DEPS: "0",
+        NTFY_SKIP_CONFIRM: "1",
+        HOME: home,
+        PATH: `${bin}:${process.env.PATH}`,
+      },
+    })
+    const tries = Number(readFileSync(path.join(st, "n"), "utf8").trim())
+    rmSync(home, { recursive: true, force: true })
+    return { status: result.status, stdout: result.stdout, stderr: result.stderr, tries }
+  }
+
+  await test("test push retries the transient 530 and reports the eventual 200", () => {
+    const r = runWizard(["530", "530", "200"])
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stdout, /test push sent \(HTTP 200\)/)
+    assert.doesNotMatch(r.stderr, /test push returned HTTP/)
+    assert.match(r.stdout, /not answering yet \(HTTP 530\).*waiting for cloudflare/)
+    assert.equal(r.tries, 3, "retried until the push succeeded")
+  })
+
+  await test("test push gives up after a bounded number of attempts", () => {
+    const r = runWizard(["530"])
+    assert.equal(r.status, 0, "an unreachable public URL warns, it does not fail the install")
+    assert.match(r.stderr, /test push returned HTTP 530/)
+    assert.doesNotMatch(r.stdout, /test push sent \(HTTP 200\)/)
+    assert.equal(r.tries, 5, "bounded: cloudflare retries 5 times, then warns")
   })
 
   await test("INSTALL.md documents the full env contract (drift guard)", () => {

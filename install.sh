@@ -578,9 +578,24 @@ if [ "${NTFY_SKIP_CONFIRM:-}" != "1" ]; then
   read -r REPLY_V || die 2 "no input (set NTFY_SKIP_CONFIRM=1 to script this)"
 fi
 TEST_BODY="{\"topic\":\"$TOPIC\",\"title\":\"🎉 opencode-ntfy setup\",\"message\":\"Notifications are live — this is the install test push.\",\"tags\":[\"tada\"]}"
-TEST_CODE="$(curl -s -o /dev/null -w '%{http_code}' -m 10 \
-  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d "$TEST_BODY" "$SERVER_URL/" || printf '000')"
+# The public URL trails provisioning — Cloudflare answers 530 (error 1033) until
+# the new hostname is live at the edge, and Tailscale Serve's first request races
+# proxy warm-up (SPEC §14.5). Retry instead of reporting the first failure.
+TEST_TRIES=1
+case "$MODE" in cloudflare|tailscale) TEST_TRIES=5 ;; esac
+TEST_TRY=1
+while :; do
+  TEST_CODE="$(curl -s -o /dev/null -w '%{http_code}' -m 10 \
+    -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    -d "$TEST_BODY" "$SERVER_URL/" || printf '000')"
+  if [ "$TEST_CODE" = "200" ]; then break; fi
+  if [ "$TEST_TRY" -ge "$TEST_TRIES" ]; then break; fi
+  if [ "$TEST_TRY" = 1 ]; then
+    info "server not answering yet (HTTP $TEST_CODE) — waiting for $MODE to warm up..."
+  fi
+  TEST_TRY=$((TEST_TRY + 1))
+  sleep 3
+done
 if [ "$TEST_CODE" = "200" ]; then
   ok "test push sent (HTTP 200) to topic $TOPIC"
 else
