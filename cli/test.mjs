@@ -7,7 +7,7 @@
  */
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -96,7 +96,6 @@ const baseEnv = (home) => ({
   XDG_CONFIG_HOME: "",
   NTFY_CONFIG_FILE: "",
   NTFY_REMOVE_PATHS: "",
-  NTFY_SITE_URL: "https://example.test",
 })
 
 const runCli = (args, home, env = {}, cli = CLI) =>
@@ -199,6 +198,51 @@ test("update --dry-run prints the plan and changes nothing", () =>
     const r = runCli(["update", "--dry-run"], home)
     assert.equal(r.status, 0, r.stderr)
     assert.match(r.stdout, /git -C .* pull --ff-only/)
+  }))
+
+// An archive install: the plugin dir exists but is not a git checkout, so update
+// must re-run the installer rather than git pull. The default source is GitHub —
+// the website is not deployed, so a site URL here would be unreachable.
+const fakeArchivePlugin = () => {
+  const dir = tmp("nudge-cli-plugin-")
+  for (const entry of ["scripts", "src"]) cpSync(join(REPO, entry), join(dir, entry), { recursive: true })
+  writeFileSync(join(dir, "index.ts"), "export {}\n")
+  writeFileSync(join(dir, "package.json"), `${JSON.stringify({ name: "opencode-ntfy", version: "0.0.9" })}\n`)
+  return dir
+}
+
+test("update --dry-run on an archive install plans the GitHub source", () =>
+  withHome((home) => {
+    const plugin = fakeArchivePlugin()
+    try {
+      const r = runCli(["update", "--dry-run"], home, { NTFY_PLUGIN_DIR: plugin })
+      assert.equal(r.status, 0, r.stderr)
+      assert.match(r.stdout, /raw\.githubusercontent\.com\/tomfc23\/nudge\/main\/install\.sh/)
+      assert.match(r.stdout, /NTFY_REPO_URL=https:\/\/github\.com\/tomfc23\/nudge/, "must clone the repo, not fetch a dead site")
+      assert.doesNotMatch(r.stdout, /NTFY_SITE_URL=/)
+    } finally {
+      rmSync(plugin, { recursive: true, force: true })
+    }
+  }))
+
+test("update --dry-run keeps an explicit NTFY_SITE_URL (website archive installs)", () =>
+  withHome((home) => {
+    const plugin = fakeArchivePlugin()
+    try {
+      const r = runCli(["update", "--dry-run"], home, { NTFY_PLUGIN_DIR: plugin, NTFY_SITE_URL: "https://example.test" })
+      assert.equal(r.status, 0, r.stderr)
+      assert.match(r.stdout, /NTFY_SITE_URL=https:\/\/example\.test/)
+      assert.doesNotMatch(r.stdout, /NTFY_REPO_URL=/)
+    } finally {
+      rmSync(plugin, { recursive: true, force: true })
+    }
+  }))
+
+test("install: unreachable source → exit 3, nothing executed", () =>
+  withHome((home) => {
+    const r = runCli(["install"], home, { NTFY_INSTALL_URL: "http://127.0.0.1:9/install.sh" })
+    assert.equal(r.status, 3)
+    assert.match(r.stderr, /could not download/)
   }))
 
 console.log("nudge-agent (add / remove)")

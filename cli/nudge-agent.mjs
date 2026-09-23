@@ -18,7 +18,17 @@ import { fileURLToPath } from "node:url"
 
 const KINDS = ["question", "permission", "finished", "error", "custom"]
 const CODEX_KINDS = ["question", "permission", "finished"]
-const SITE_URL = (process.env.NTFY_SITE_URL || "https://nudge.tommyek.com").replace(/\/+$/, "")
+// The installer is fetched from the public repo, and by default so is the plugin
+// (install.sh's NTFY_REPO_URL path) — the website is a human-facing front end,
+// not a hard dependency of the CLI. Set NTFY_SITE_URL to use the website's
+// install.sh + plugin.tar.gz instead, or NTFY_INSTALL_URL/NTFY_INSTALL_BASE to
+// point at a fork.
+const RAW_BASE = (process.env.NTFY_INSTALL_BASE || "https://raw.githubusercontent.com/tomfc23/nudge/main").replace(
+  /\/+$/,
+  "",
+)
+const INSTALL_URL = process.env.NTFY_INSTALL_URL || `${RAW_BASE}/install.sh`
+const REPO_URL = process.env.NTFY_REPO_URL || "https://github.com/tomfc23/nudge"
 const HOME = process.env.HOME || homedir()
 const DATA_DIR = process.env.NTFY_SETUP_DIR || join(HOME, "ntfy")
 const CLONE_DEFAULT = join(HOME, ".local/share/opencode-ntfy")
@@ -349,15 +359,25 @@ function cmdInstall(args) {
   const dir = mkdtempSync(join(tmpdir(), "nudge-agent-"))
   const file = join(dir, "install.sh")
   try {
-    say(`downloading ${SITE_URL}/install.sh`)
-    const curl = run("curl", ["-fsSL", `${SITE_URL}/install.sh`, "-o", file])
-    if (curl.status !== 0 || !existsSync(file)) return fail(`could not download ${SITE_URL}/install.sh`, 3)
-    const env = { ...process.env, NTFY_SITE_URL: process.env.NTFY_SITE_URL || SITE_URL }
+    say(`downloading ${INSTALL_URL}`)
+    const curl = run("curl", ["-fsSL", INSTALL_URL, "-o", file])
+    if (curl.status !== 0 || !existsSync(file)) return fail(`could not download ${INSTALL_URL}`, 3)
+    const env = sourceEnv()
+    say(`plugin   from ${env.NTFY_SITE_URL ? `${env.NTFY_SITE_URL} (website archive)` : env.NTFY_REPO_URL}`)
     if (harness) env.NTFY_HARNESSES = harness
     return run("bash", [file], env).status ?? 1
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
+}
+
+// How the installer should obtain the plugin: an explicit site wins (it serves
+// plugin.tar.gz), otherwise clone the public repo. Without this the default
+// site URL is unreachable and install cannot fetch the plugin at all.
+function sourceEnv(base = process.env) {
+  const env = { ...base }
+  if (!env.NTFY_SITE_URL && !env.NTFY_REPO_URL) env.NTFY_REPO_URL = REPO_URL
+  return env
 }
 
 // Fill in the wizard's answers from what is already installed, so update runs
@@ -387,7 +407,7 @@ function detectedInstallerEnv(plugin) {
   detected.NTFY_PHONE = "none"
   detected.NTFY_SKIP_CONFIRM = "1"
 
-  const env = { ...process.env }
+  const env = sourceEnv()
   for (const [key, value] of Object.entries(detected)) if (process.env[key] === undefined) env[key] = value
   return env
 }
@@ -415,20 +435,26 @@ function cmdUpdate(args) {
     }
   } else {
     const env = detectedInstallerEnv(plugin)
-    say("plugin   downloaded install — re-running the installer")
+    const source = env.NTFY_SITE_URL || env.NTFY_REPO_URL
+    say(`plugin   ${plugin} (archive) — re-running the installer, plugin from ${source}`)
     if (args.includes("--dry-run")) {
-      say(`  ${SITE_URL}/install.sh with ${Object.entries(env).filter(([k]) => k.startsWith("NTFY_")).length} NTFY_* overrides`)
-      for (const key of ["NTFY_HARNESSES", "NTFY_MODE", "NTFY_SCOPE", "NTFY_EVENTS"]) say(`  ${key}=${env[key] ?? "(unset)"}`)
+      say(`  ${INSTALL_URL}`)
+      for (const key of ["NTFY_HARNESSES", "NTFY_MODE", "NTFY_SCOPE", "NTFY_EVENTS", "NTFY_REPO_URL", "NTFY_SITE_URL"]) {
+        if (env[key]) say(`  ${key}=${env[key]}`)
+      }
       return 0
     }
     const dir = mkdtempSync(join(tmpdir(), "nudge-agent-"))
     const file = join(dir, "install.sh")
     try {
-      const curl = run("curl", ["-fsSL", `${SITE_URL}/install.sh`, "-o", file])
-      if (curl.status !== 0 || !existsSync(file)) return fail(`could not download ${SITE_URL}/install.sh`, 3)
-      if (process.env.NTFY_SITE_URL === undefined) env.NTFY_SITE_URL = SITE_URL
+      const curl = run("curl", ["-fsSL", INSTALL_URL, "-o", file])
+      if (curl.status !== 0 || !existsSync(file)) return fail(`could not download ${INSTALL_URL}`, 3)
       const result = run("bash", [file], env)
       if (result.status !== 0) return result.status ?? 1
+      if (existsSync(join(plugin, ".git"))) {
+        say("")
+        say(`${plugin} is a git checkout now — future updates are a git pull`)
+      }
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -607,8 +633,10 @@ Flags:
   --help, -h      this text
   --version, -v   print the CLI version
 
-Env: NTFY_SITE_URL NTFY_PLUGIN_DIR NTFY_SETUP_DIR NTFY_CONFIG_FILE CODEX_HOME
-     XDG_CONFIG_HOME, plus any NTFY_* the installer accepts (passed through)
+Env: NTFY_SITE_URL (use the website's install.sh + plugin.tar.gz instead of the repo)
+     NTFY_REPO_URL NTFY_INSTALL_URL NTFY_PLUGIN_DIR NTFY_SETUP_DIR
+     NTFY_CONFIG_FILE CODEX_HOME XDG_CONFIG_HOME,
+     plus any NTFY_* the installer accepts (passed through)
 
 Exit codes: 0 ok · 2 usage/input · 3 missing dependency or partial · 4 conflict · 5 runtime`
 
