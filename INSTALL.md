@@ -27,6 +27,8 @@ without the verification table.
   unrelated keys in `opencode.json`, or regenerate an existing `baseTopic`.
 - **Consent:** ask the user before `brew install` or browser logins unless
   they already said yes. Nothing runs before the questions are answered.
+- **CLI choice:** the plugin and server work without `nudge-agent`. Ask whether
+  the user wants the plugin alone or the CLI as well; install the CLI only if requested.
 
 ## Ask the user these questions (one chat round is enough)
 
@@ -40,6 +42,7 @@ without the verification table.
 | 3 | **Which notifications?** all five (recommended) or which to disable: question, permission, finished, error, custom | `NTFY_EVENTS` (`all` or csv of the **enabled** kinds) |
 | 4 | **Which phone?** ios / android / none | `NTFY_PHONE` |
 | 5 | **May I install missing tools via Homebrew and run cloudflared/tailscale logins in your browser?** | `NTFY_INSTALL_DEPS` (`1`/`0`) |
+| 6 | **Do you want the plugin only, or the `nudge-agent` CLI as well?** If CLI, npm or Homebrew? | optional CLI install after the plugin setup |
 
 If you have a checkout, run the commands below from its root. Otherwise,
 download the installer into the user's project directory (or another working
@@ -176,7 +179,21 @@ curl -s -o /dev/null -w '%{http_code}\n' -m 10 \
   phone connected / cloudflare = wait ~1 min for DNS · iOS Settings →
   Notifications → ntfy allowed · `bash scripts/setup-server.sh preflight <mode>`.
 
-## Step 5 — finish and report
+## Step 5 — optional CLI, then finish and report
+
+If Q6 chose the CLI, install it with the selected package manager. The CLI is a
+separate management command; plugin setup does not require it.
+Do not install the CLI for a plugin-only choice.
+
+```bash
+npm install -g nudge-agent
+# or, if the user chose Homebrew:
+brew tap tomfc23/nudge && brew install nudge-agent
+```
+
+Run `nudge-agent status` after installing the CLI and report what it finds. If
+installation fails, report that the plugin is working but the optional CLI is
+not installed; do not claim the whole request is complete.
 
 Remind the user: **start (or restart) OpenCode once** if it was selected — a newly added plugin
 loads on next start; option changes hot-reload afterwards. For Codex, review
@@ -192,6 +209,7 @@ config ................. <path> (serverUrl/token/baseTopic present)
 server-side test push ... HTTP 200 (install.sh)
 phone test push ......... HTTP 200 + user confirmed arrival: yes/no/pending
 OpenCode restart ........ reminded user (needed once for a new plugin)
+CLI ..................... plugin only / npm or Homebrew installed; status checked
 ```
 
 ---
