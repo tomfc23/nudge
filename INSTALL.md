@@ -1,7 +1,7 @@
 # INSTALL.md — have your agent install Nudge
 
 Give this file (or its contents) to a coding agent with shell access — OpenCode,
-Claude Code, or similar. It is a complete runbook: the agent asks you a few
+Claude Code, or similar. It is a complete cookbook: the agent asks you a few
 questions in chat, provisions a self-hosted ntfy server, wires OpenCode, Codex,
 or both, and
 proves delivery to your phone with a test push.

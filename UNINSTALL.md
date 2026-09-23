@@ -1,7 +1,7 @@
 # UNINSTALL.md — have your agent uninstall Nudge
 
 Give this file (or its contents) to a coding agent with shell access — OpenCode,
-Claude Code, or similar. It is a complete runbook: the agent asks which of three
+Claude Code, or similar. It is a complete cookbook: the agent asks which of three
 fixed levels to remove, surveys what is installed (**read-only first**), takes
 your consent, executes, re-verifies against the live machine, and reports a
 table.
