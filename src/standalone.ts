@@ -34,7 +34,7 @@ export async function standalone(cwd: string, harness: string) {
         if (input.topic && !/^[A-Za-z0-9_-]{1,64}$/.test(input.topic)) throw new Error("invalid topic")
         if (input.priority && !["min", "low", "default", "high", "urgent"].includes(input.priority)) throw new Error("invalid priority")
         if (input.tags && (!Array.isArray(input.tags) || !input.tags.every((tag) => typeof tag === "string"))) throw new Error("invalid tags")
-        return notifier.custom({ title: input.title || "ntfy", message: input.message, topic: input.topic,
+        return notifier.custom({ title: `${harness} · ${input.title || "ntfy"}`, message: input.message, topic: input.topic,
           priority: priorityValue(input.priority), tags: input.tags })
       },
       done(text: string) {

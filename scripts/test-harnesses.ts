@@ -69,7 +69,7 @@ try {
   await piHandlers.get("agent_settled")!({}, {})
   await piTool.execute("id", { message: "pi custom" })
   await new Promise((resolve) => setTimeout(resolve, 25))
-  assert.deepEqual(events.map((e) => e.title), ["Finished: Command Code · project", "Question: Command Code · project", "Permission denied: Command Code · project", "ntfy", "Question: Pi · project", "ntfy"])
+  assert.deepEqual(events.map((e) => e.title), ["Finished: Command Code · project", "Question: Command Code · project", "Permission denied: Command Code · project", "Command Code · ntfy", "Question: Pi · project", "Pi · ntfy"])
   assert.equal(events[1].message, "Choose a database")
   assert.ok(events.every((e) => e.topic === "nudge-new"))
 
@@ -83,6 +83,18 @@ class C:
 c=C(); m.register(c)
 assert {'post_llm_call','post_tool_call','pre_approval_request','on_session_end'} <= c.hooks.keys()
 assert 'ntfy_notify' in c.tools
+class Response:
+ def __enter__(self): return self
+ def __exit__(self, *args): pass
+requests=[]
+def fake_open(request, timeout):
+ requests.append(request)
+ return Response()
+m._config=lambda: {'serverUrl':'https://ntfy.example','baseTopic':'test-topic','token':'test-token'}
+m.urlopen=fake_open
+assert m._send('finished','session','Finished','Done')
+assert requests[0].get_header('User-agent') == 'Nudge/0.1'
+assert json.loads(requests[0].data)['title'] == 'Hermes · Finished'
 print('Hermes plugin registration ok')`], { encoding: "utf8", env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" } })
   assert.equal(py.status, 0, py.stderr)
   console.log("all harness adapter checks passed")

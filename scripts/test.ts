@@ -379,6 +379,7 @@ async function main() {
   await test("permission.asked → permission publish (urgent, lock tag, single topic, bearer auth)", () => {
     const q = byKind("Permission needed:")
     assert.equal(q.length, 1)
+    assert.match(q[0].body.title, /OpenCode/)
     assert.equal(q[0].body.topic, "opencode-test")
     assert.equal(q[0].body.priority, 5)
     assert.deepEqual(q[0].body.tags, ["lock"])
@@ -386,56 +387,56 @@ async function main() {
     assert.equal((q[0].headers as any).Authorization, undefined)
   })
   await test("finished NOT suppressed by an earlier permission (permission is its own kind, not a question)", () => {
-    assert.equal(byKind("Finished: Fix login bug").length, 1)
+    assert.equal(byKind("Finished: OpenCode · Fix login bug").length, 1)
   })
   await test("question→finished suppression still works via double boundary (session qfin)", () => {
-    assert.equal(byKind("Question: Staging migration").length, 1)
-    assert.equal(byKind("Finished: Staging migration").length, 0)
+    assert.equal(byKind("Question: OpenCode · Staging migration").length, 1)
+    assert.equal(byKind("Finished: OpenCode · Staging migration").length, 0)
   })
   await test("session.execution.succeeded → telemetry caption (Done in 1s · 2 tools)", () => {
-    const f = byKind("Finished: Boundary rewrite")
+    const f = byKind("Finished: OpenCode · Boundary rewrite")
     assert.equal(f.length, 1)
     assert.equal(f[0].body.priority, 3)
     assert.equal(f[0].body.message, "Done in 1s · 2 tools")
   })
   await test("plain completion without telemetry → fallback caption", () => {
-    const f = byKind("Finished: Add dark mode")
+    const f = byKind("Finished: OpenCode · Add dark mode")
     assert.equal(f.length, 1)
     assert.equal(f[0].body.topic, "opencode-test")
     assert.equal(f[0].body.priority, 3)
     assert.equal(f[0].body.message, "Agent finished its turn.")
   })
   await test("text-classified question → question publish", () => {
-    const q = byKind("Question: Refactor plan")
+    const q = byKind("Question: OpenCode · Refactor plan")
     assert.equal(q.length, 1)
     assert.equal(q[0].body.priority, 5)
     assert.match(q[0].body.message, /squash these commits/)
   })
   await test("interrupted turn → no notification", () => {
-    assert.equal(byKind("Finished: Long job").length, 0)
-    assert.equal(byKind("Question: Long job").length, 0)
+    assert.equal(byKind("Finished: OpenCode · Long job").length, 0)
+    assert.equal(byKind("Question: OpenCode · Long job").length, 0)
   })
   await test("failed turn → error publish, no finished", () => {
-    const e = byKind("Error: Risky task")
+    const e = byKind("Error: OpenCode · Risky task")
     assert.equal(e.length, 1)
     assert.equal(e[0].body.topic, "opencode-test")
     assert.equal(e[0].body.priority, 4)
     assert.match(e[0].body.message, /Model overloaded/)
-    assert.equal(byKind("Finished: Risky task").length, 0)
+    assert.equal(byKind("Finished: OpenCode · Risky task").length, 0)
   })
   await test("tool error cooldown: 1st fires, 2nd suppressed, 3rd after cooldown carries count", async () => {
-    const e = byKind("Error: Flaky suite")
+    const e = byKind("Error: OpenCode · Flaky suite")
     assert.equal(e.length, 1)
     assert.equal(e[0].body.message, "shell failed · ECONNRESET")
     assert.equal(e[0].body.message.includes("suppressed"), false)
     // 2 tool failures inside the 30ms cooldown were suppressed (script fired 3 total).
     await new Promise((r) => setTimeout(r, 60)) // > cooldownSec 0.03
     notifier.notify("error", "tools", {
-      title: "Error: Flaky suite",
+      title: "Error: OpenCode · Flaky suite",
       message: "Tool failed: ECONNRESET",
     })
     await flush()
-    const all = byKind("Error: Flaky suite")
+    const all = byKind("Error: OpenCode · Flaky suite")
     assert.equal(all.length, 2)
     assert.match(all[1].body.message, /\(\+2 similar errors suppressed\)/)
   })
@@ -443,9 +444,10 @@ async function main() {
     const q = fetcher.sent.filter((s) => s.body.message === "Which database?")
     assert.equal(q.length, 1)
     assert.equal(q[0].body.topic, "opencode-test")
+    assert.match(q[0].body.title, /OpenCode/)
   })
   await test("form.created with fields → lock-screen choices in caption (hidden skipped)", () => {
-    const q = fetcher.sent.filter((s) => s.body.title?.startsWith("Question: Form fields demo"))
+    const q = fetcher.sent.filter((s) => s.body.title?.startsWith("Question: OpenCode · Form fields demo"))
     assert.equal(q.length, 1)
     assert.equal(q[0].body.message, "Pick env · Environment: staging | prod · Dry run?: yes | no")
   })
@@ -640,6 +642,7 @@ async function main() {
     assert.match(ok.content, /Notification sent/)
     assert.equal(fetcher.sent.length, 1)
     assert.equal(fetcher.sent[0].body.topic, "bt")
+    assert.equal(fetcher.sent[0].body.title, "OpenCode · CI")
     assert.equal(fetcher.sent[0].body.priority, 5)
     assert.deepEqual(fetcher.sent[0].body.tags, ["tada"])
 
@@ -652,6 +655,7 @@ async function main() {
     await added.execute({ message: "x", topic: "bt-deploy" }, execCtx)
     await flush()
     assert.equal(fetcher.sent.at(-1)!.body.topic, "bt-deploy")
+    assert.equal(fetcher.sent.at(-1)!.body.title, "OpenCode · ntfy")
   })
 
   console.log("setup-server.sh non-interactive contract (SPEC §14.3)")

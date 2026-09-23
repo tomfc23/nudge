@@ -47,10 +47,10 @@ def _send(kind, session, title, message, *, topic=None, priority=None, tags=None
     default_priority, default_tags = defaults[kind]
     priority = priority or event.get("priority", default_priority)
     priority = {"min": 1, "low": 2, "default": 3, "high": 4, "urgent": 5}.get(priority, priority)
-    body = json.dumps({"topic": topic or cfg["baseTopic"], "title": title[:128],
+    body = json.dumps({"topic": topic or cfg["baseTopic"], "title": f"Hermes · {title}"[:128],
                        "message": str(message)[:240], "priority": priority,
                        "tags": tags if tags is not None else event.get("tags", default_tags)}).encode()
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", "User-Agent": "Nudge/0.1"}
     if cfg.get("token"):
         headers["Authorization"] = "Bearer " + cfg["token"]
     try:

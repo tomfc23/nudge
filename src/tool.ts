@@ -89,7 +89,7 @@ export async function registerTool(ctx: ToolDeps, notifier: Notifier, config: Co
         try {
           await notifier.custom({
             message: input.message,
-            title: input.title ?? "ntfy",
+            title: `OpenCode · ${input.title ?? "ntfy"}`,
             ...(priority !== undefined ? { priority } : {}),
             ...(input.tags ? { tags: input.tags } : {}),
             ...(input.topic ? { topic: input.topic } : {}),
