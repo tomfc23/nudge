@@ -245,6 +245,34 @@ test("install: unreachable source → exit 3, nothing executed", () =>
     assert.match(r.stderr, /could not download/)
   }))
 
+// A checkout whose git pull cannot succeed — the case a rewritten upstream left
+// users in, where git's own "fatal: Not possible to fast-forward" was the whole
+// answer. The CLI must name the way out and exit 4 (conflict), not 1.
+const fakeUnpullablePlugin = () => {
+  const dir = fakeArchivePlugin()
+  // Real checkouts always carry the lockfile — update reads it before pulling.
+  writeFileSync(join(dir, "package-lock.json"), "{}\n")
+  const git = (...args) => spawnSync("git", ["-C", dir, ...args], { encoding: "utf8" })
+  git("init", "-q")
+  git("remote", "add", "origin", "http://127.0.0.1:9/nudge.git")
+  return dir
+}
+
+test("update: an unpullable checkout gets a remedy, not a bare fatal", () =>
+  withHome((home) => {
+    const plugin = fakeUnpullablePlugin()
+    try {
+      const r = runCli(["update"], home, { NTFY_PLUGIN_DIR: plugin, GIT_TERMINAL_PROMPT: "0" })
+      assert.equal(r.status, 4, `expected exit 4, got ${r.status}\n${r.stdout}${r.stderr}`)
+      assert.match(r.stdout, /could not fast-forward/)
+      assert.match(r.stdout, /git -C .* fetch origin && git -C .* reset --hard origin\/main/)
+      assert.match(r.stdout, /what differs/)
+      assert.doesNotMatch(r.stdout, /already current/, "must not claim success after a failed pull")
+    } finally {
+      rmSync(plugin, { recursive: true, force: true })
+    }
+  }))
+
 console.log("nudge-agent (add / remove)")
 
 const wireOpencode = (home) => fixtureConfig(home, { plugin: [[REPO, OUR_ENTRY]] })

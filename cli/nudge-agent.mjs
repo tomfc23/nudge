@@ -484,7 +484,18 @@ function cmdUpdate(args) {
     }
     const lockBefore = readFileSync(join(plugin, "package-lock.json"), "utf8")
     const pull = run("git", ["-C", plugin, "pull", "--ff-only"])
-    if (pull.status !== 0) return pull.status ?? 1
+    if (pull.status !== 0) {
+      // --ff-only refuses as soon as the histories diverge: upstream was rewritten
+      // (as ours was, to drop a co-author trailer) or this checkout has its own
+      // commits. Recovering means discarding the local side, so we name the
+      // command rather than running it — but never leave git's bare "fatal:" as
+      // the whole answer.
+      say("")
+      say("could not fast-forward — upstream history changed, or this checkout has local commits")
+      say(`  what differs:  git -C ${plugin} status`)
+      say(`  take upstream: git -C ${plugin} fetch origin && git -C ${plugin} reset --hard origin/main`)
+      return 4
+    }
     const lockAfter = readFileSync(join(plugin, "package-lock.json"), "utf8")
     if (lockBefore !== lockAfter) {
       say("dependencies changed — npm ci")
