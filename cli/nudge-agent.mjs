@@ -11,7 +11,7 @@
  * Zero runtime dependencies, ESM, Node >= 18.
  */
 import { spawnSync } from "node:child_process"
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, readSync, rmSync } from "node:fs"
 import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -52,6 +52,64 @@ const fail = (message, code = 2) => {
 
 const sh = (cmd, args, env) => spawnSync(cmd, args, { encoding: "utf8", env: env || process.env })
 const run = (cmd, args, env) => spawnSync(cmd, args, { stdio: "inherit", env: env || process.env })
+
+/* ------------------------------------------------------------------ prompt */
+
+// The CLI is otherwise entirely non-interactive — flags and NTFY_* env vars, so
+// an agent or a script never blocks on stdin. The scope question is asked only
+// when stdin is a terminal, and a bare Enter accepts the inherited scope, so a
+// non-interactive caller behaves exactly as it did before the question existed.
+const canAsk = () => process.stdin.isTTY === true && !JSON_MODE
+const tildify = (path) => (path.startsWith(`${HOME}/`) ? `~${path.slice(HOME.length)}` : path)
+// Blocking wait without spinning, for the EAGAIN retry below. Node has no sync sleep.
+const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+
+function readLine() {
+  const byte = Buffer.alloc(1)
+  let line = ""
+  for (;;) {
+    let read
+    try {
+      read = readSync(0, byte, 0, 1, null)
+    } catch (error) {
+      // Node leaves a TTY non-blocking, so reading ahead of the user raises EAGAIN
+      // instead of waiting. Treating that as EOF would silently accept the default
+      // before they had a chance to answer, so sleep and retry.
+      if (error?.code === "EAGAIN") {
+        sleep(20)
+        continue
+      }
+      read = 0
+    }
+    if (read === 0) {
+      process.stdout.write("\n") // EOF (Ctrl-D): finish the line we were on
+      break
+    }
+    const char = byte.toString("utf8")
+    if (char === "\n") break
+    if (char !== "\r") line += char
+  }
+  return line.trim().toLowerCase()
+}
+
+// Empty accepts the fallback; anything unrecognised returns null so we ask again.
+const parseScope = (input, fallback) => {
+  if (!input) return fallback
+  if (["g", "global", "1"].includes(input)) return "global"
+  if (["p", "project", "2"].includes(input)) return "project"
+  return null
+}
+
+function askScope(harness, inherited) {
+  const where = (scope) => tildify(harness === "codex" ? codexDir(scope) : opencodeFile(scope))
+  for (;;) {
+    const question = `scope    global (${where("global")}) or project (${where("project")})? [${inherited}] `
+    process.stdout.write(question)
+    const scope = parseScope(readLine(), inherited)
+    if (scope) return scope
+    say("         expected global or project")
+  }
+}
 
 /* ------------------------------------------------------------------ paths */
 
@@ -469,8 +527,16 @@ function cmdUpdate(args) {
 
 /* ------------------------------------------------------------------ add / remove */
 
+// Where a harness's files go for a given scope. The writers and the scope prompt
+// both read these, so the question can never name a path other than the one written.
+const codexDir = (scope) => (scope === "project" ? join(process.cwd(), ".codex") : CODEX_HOME)
+const opencodeFile = (scope) =>
+  scope === "project"
+    ? join(process.cwd(), "opencode.json")
+    : join(process.env.XDG_CONFIG_HOME || join(HOME, ".config"), "opencode/opencode.json")
+
 function writeCodex(plugin, settings, scope) {
-  const dir = scope === "project" ? join(process.cwd(), ".codex") : CODEX_HOME
+  const dir = codexDir(scope)
   const enabled = enabledKinds(settings.events, CODEX_KINDS)
   const env = {
     ...process.env,
@@ -500,10 +566,7 @@ function writeCodex(plugin, settings, scope) {
 }
 
 function writeOpencode(plugin, settings, scope) {
-  const file =
-    scope === "project"
-      ? join(process.cwd(), "opencode.json")
-      : join(process.env.XDG_CONFIG_HOME || join(HOME, ".config"), "opencode/opencode.json")
+  const file = opencodeFile(scope)
   const enabled = enabledKinds(settings.events)
   const env = {
     ...process.env,
@@ -543,9 +606,9 @@ function cmdAdd(args) {
     return fail("nothing to copy serverUrl/token/topic from — run: nudge-agent install", 3)
   }
   say(`settings from ${settings.harness} (${settings.topic})`)
-  return harness === "codex"
-    ? writeCodex(plugin, settings, scope || settings.scope)
-    : writeOpencode(plugin, settings, scope || settings.scope)
+  // No flag: ask, defaulting to wherever the harness we're copying from lives.
+  const chosen = scope || (canAsk() ? askScope(harness, settings.scope) : settings.scope)
+  return harness === "codex" ? writeCodex(plugin, settings, chosen) : writeOpencode(plugin, settings, chosen)
 }
 
 function cmdRemove(args) {
@@ -623,7 +686,7 @@ const USAGE = `nudge-agent — manage a Nudge install (phone notifications for O
   nudge-agent install [--harness both|opencode|codex]     run the setup wizard
   nudge-agent status                                      what is wired up right now
   nudge-agent update [--dry-run]                          bring the plugin up to date
-  nudge-agent add <opencode|codex> [--global|--project]   wire one more harness
+  nudge-agent add <opencode|codex> [--global|--project]   wire one more harness (prompts for scope)
   nudge-agent remove <opencode|codex>                     unwire one harness
   nudge-agent uninstall [--level 1|2|3] [--yes]           remove Nudge
 

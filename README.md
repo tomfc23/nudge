@@ -221,7 +221,7 @@ npm install -g nudge-agent      # or: brew tap tomfc23/nudge && brew install nud
 | `nudge-agent install` | runs the wizard (same as `sh install.sh`) |
 | `nudge-agent status [--json]` | what is wired up right now — per harness, server reachability, and whether Codex has actually *trusted* the hooks |
 | `nudge-agent update [--dry-run]` | `git pull` for a checkout, re-runs the installer for an archive install |
-| `nudge-agent add <opencode\|codex>` | wires one more harness, copying `serverUrl`/`token`/`topic` from the harness already configured |
+| `nudge-agent add <opencode\|codex>` | wires one more harness, copying `serverUrl`/`token`/`topic` from the harness already configured. Asks global or project unless `--global`/`--project` says |
 | `nudge-agent remove <opencode\|codex>` | unwires one harness — the other and the server are untouched |
 | `nudge-agent uninstall [--level 1\|2\|3]` | delegates to `scripts/uninstall.sh`; level 3 also wipes server data and needs `--yes` |
 
