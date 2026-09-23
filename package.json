@@ -12,7 +12,7 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "tsx scripts/test.ts && node scripts/test-codex.mjs"
+    "test": "tsx scripts/test.ts && node scripts/test-codex.mjs && node cli/test.mjs"
   },
   "dependencies": {
     "@opencode/plugin": "^2.0.12"

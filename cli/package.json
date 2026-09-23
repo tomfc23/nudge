@@ -1,0 +1,32 @@
+{
+  "name": "nudge-agent",
+  "version": "0.1.0",
+  "description": "Manage a Nudge install: phone notifications for OpenCode and Codex.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "nudge-agent": "./nudge-agent.mjs"
+  },
+  "files": [
+    "nudge-agent.mjs"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "nudge",
+    "opencode",
+    "codex",
+    "ntfy",
+    "notifications"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tomfc23/nudge.git",
+    "directory": "cli"
+  },
+  "homepage": "https://github.com/tomfc23/nudge",
+  "scripts": {
+    "test": "node test.mjs"
+  }
+}

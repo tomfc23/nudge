@@ -5,12 +5,14 @@
  * and the nudge-agent CLI.
  *
  *   node scripts/configure-opencode.mjs --scan   <configFile> [targets]
+ *   node scripts/configure-opencode.mjs --show   <configFile> [targets]
  *   node scripts/configure-opencode.mjs --remove <configFile> [targets]
  *   node scripts/configure-opencode.mjs <configFile> <pluginPath>
  *
  * --scan and --remove print "<status>\t<detail>" on stdout — statuses are
  * present | absent | ambiguous | removed | failed — and always exit 0, so a
- * caller only has to check for empty output.
+ * caller only has to check for empty output. --show prints one JSON object
+ * ({status, path?, options?}) with our entry's options instead.
  *
  * add reads its settings from NTFY_W ("<serverUrl>|<token>|<proposedTopic>|
  * <all>|<list>"), prints the resulting topic, and exits 2 on bad input or 5 if
@@ -30,7 +32,8 @@ const clean = (value) => String(value === undefined ? "" : value).replace(/[\t\n
 const out = (status, detail) => console.log(`${status}\t${clean(detail)}`)
 
 const args = process.argv.slice(2)
-const mode = args[0] === "--scan" ? "scan" : args[0] === "--remove" ? "remove" : "add"
+const mode =
+  args[0] === "--scan" ? "scan" : args[0] === "--remove" ? "remove" : args[0] === "--show" ? "show" : "add"
 if (mode !== "add") args.shift()
 
 if (mode === "add") add()
@@ -61,23 +64,37 @@ function manage() {
 
   const matched = []
   const stale = []
+  let found = null
   const plugin = Array.isArray(cfg.plugin) ? cfg.plugin : null
   const plugins = Array.isArray(cfg.plugins) ? cfg.plugins : null
   if (plugin) {
     plugin.forEach((entry) => {
       const p = Array.isArray(entry) ? entry[0] : undefined
       const o = Array.isArray(entry) ? entry[1] : undefined
-      if (ours(p)) matched.push(String(p))
-      else if (looksLikeOurs(o)) stale.push(String(p))
+      if (ours(p)) {
+        matched.push(String(p))
+        if (!found) found = { path: String(p), options: o && typeof o === "object" ? o : {} }
+      } else if (looksLikeOurs(o)) stale.push(String(p))
     })
   }
   if (plugins) {
     plugins.forEach((entry) => {
       const p = entry && entry.package
       const o = entry && entry.options
-      if (ours(p)) matched.push(String(p))
-      else if (looksLikeOurs(o)) stale.push(String(p === undefined ? "?" : p))
+      if (ours(p)) {
+        matched.push(String(p))
+        if (!found) found = { path: String(p), options: o && typeof o === "object" ? o : {} }
+      } else if (looksLikeOurs(o)) stale.push(String(p === undefined ? "?" : p))
     })
+  }
+
+  // --show: one JSON object with the entry's options, so callers (nudge-agent)
+  // read our settings without re-implementing the "which entry is ours" rule.
+  if (mode === "show") {
+    if (found) console.log(JSON.stringify({ status: "present", path: found.path, options: found.options }))
+    else if (stale.length) console.log(JSON.stringify({ status: "ambiguous", stale }))
+    else console.log(JSON.stringify({ status: "absent" }))
+    return
   }
 
   if (mode === "scan") {
