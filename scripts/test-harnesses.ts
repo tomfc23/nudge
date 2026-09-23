@@ -53,9 +53,11 @@ try {
   process.env.NTFY_CONFIG_FILE = configPath
   const cmdHandlers = new Map<string, (event: any) => void>()
   let commandTool: any
-  await commandCode({ cwd: project, on: (name: string, fn: any) => cmdHandlers.set(name, fn), hooks: (hooks: any) => { cmdHandlers.set("run_end", hooks.onRunEnd) }, addTool: (tool: any) => { commandTool = tool } })
+  await commandCode({ cwd: project, on: (name: string, fn: any) => cmdHandlers.set(name, fn), hooks: (hooks: any) => { cmdHandlers.set("run_end", hooks.onRunEnd); cmdHandlers.set("before_tool_call", hooks.beforeToolCall) }, addTool: (tool: any) => { commandTool = tool } })
   await cmdHandlers.get("run_end")!({ result: { stopReason: "end_turn", finalText: "Done." } })
   await cmdHandlers.get("run_end")!({ result: { stopReason: "interrupted", finalText: "Stopped." } })
+  await cmdHandlers.get("before_tool_call")!({ toolName: "shell_command", input: {} })
+  await cmdHandlers.get("before_tool_call")!({ toolName: "ask_user_question", input: { questions: [{ question: "Choose a database", options: [{ label: "SQLite" }] }] } })
   cmdHandlers.get("tool_denied")!({ toolName: "shell" })
   await commandTool.run({ input: { message: "custom" } })
 
@@ -67,7 +69,8 @@ try {
   await piHandlers.get("agent_settled")!({}, {})
   await piTool.execute("id", { message: "pi custom" })
   await new Promise((resolve) => setTimeout(resolve, 25))
-  assert.deepEqual(events.map((e) => e.title), ["Finished: project", "Permission denied: project", "ntfy", "Question: project", "ntfy"])
+  assert.deepEqual(events.map((e) => e.title), ["Finished: Command Code · project", "Question: Command Code · project", "Permission denied: Command Code · project", "ntfy", "Question: Pi · project", "ntfy"])
+  assert.equal(events[1].message, "Choose a database")
   assert.ok(events.every((e) => e.topic === "nudge-new"))
 
   const py = spawnSync("python3", ["-c", `import importlib.util, json

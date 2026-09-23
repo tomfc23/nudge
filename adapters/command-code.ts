@@ -3,9 +3,17 @@ import { standalone } from "../src/standalone"
 export default async function (cmd: any) {
   const app = await standalone(cmd.cwd, "Command Code")
   if (!app) return
-  cmd.hooks({ onRunEnd: async ({ result }: any) => {
-    if (!["interrupted", "permission_denied"].includes(result?.stopReason)) await app.done(result?.finalText || "")
-  } })
+  cmd.hooks({
+    beforeToolCall: async ({ toolName, input }: any) => {
+      if (toolName === "ask_user_question") {
+        const question = input?.questions?.find((item: any) => typeof item?.question === "string")?.question
+        await app.question(question || "Command Code is waiting for your answer.")
+      }
+    },
+    onRunEnd: async ({ result }: any) => {
+      if (!["interrupted", "permission_denied"].includes(result?.stopReason)) await app.done(result?.finalText || "")
+    },
+  })
   cmd.on("tool_denied", (event: any) => app.permission(`${event.toolName || "Tool"} was denied`, "Permission denied"))
   cmd.on("tool_errored", (event: any) => app.error(String(event.error || event.toolName || "tool failed")))
   cmd.on("run_error", (event: any) => app.error(String(event.error?.message || event.error || "run failed")))

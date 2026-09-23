@@ -20,11 +20,15 @@ export async function standalone(cwd: string, harness: string) {
     })
     if (!config) throw new Error(problems.join("; "))
     const notifier = new Notifier(config)
-    const title = basename(cwd) || harness
+    const title = `${harness} · ${basename(cwd) || "session"}`
     const session = `${harness}:${cwd}`
+    const question = (text: string) => notifier.notify("question", session, {
+      title: `Question: ${title}`, message: questionCaption(text, config.events.question.patterns),
+    })
     return {
       config,
       notifier,
+      question,
       custom(input: { message: string; title?: string; priority?: string; tags?: string[]; topic?: string }) {
         if (typeof input?.message !== "string" || !input.message.trim()) throw new Error("message is required")
         if (input.topic && !/^[A-Za-z0-9_-]{1,64}$/.test(input.topic)) throw new Error("invalid topic")
@@ -36,7 +40,7 @@ export async function standalone(cwd: string, harness: string) {
       done(text: string) {
         const verdict = classify(text, config.events.question.idleMode, config.events.question.patterns)
         if (verdict === "question" && config.events.question.enabled) {
-          return notifier.notify("question", session, { title: `Question: ${title}`, message: questionCaption(text, config.events.question.patterns) })
+          return question(text)
         } else {
           return notifier.notify("finished", session, { title: `Finished: ${title}`, message: finishedCaption() })
         }
