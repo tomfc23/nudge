@@ -305,6 +305,14 @@ async function main() {
     await flush()
     assert.equal(f.sent.length, 0)
   })
+  await test("custom.enabled=false → custom tool cannot publish", async () => {
+    const res = await readConfig(
+      { serverUrl: "http://t", baseTopic: "bt", events: { custom: { enabled: false } } }, fakeStorage(),
+    )
+    const f = fakeFetch()
+    await assert.rejects(new Notifier(res.config!, f as FetchLike).custom({ title: "x", message: "m" }), /disabled/)
+    assert.equal(f.sent.length, 0)
+  })
   await test("startup info lists the subscribe topic", async () => {
     const res = await readConfig({ serverUrl: "http://t", baseTopic: "bt" }, fakeStorage())
     assert.ok(res.info.some((l) => l.includes("topic: bt")))
@@ -733,7 +741,7 @@ async function main() {
   const inst = fileURLToPath(new URL("../install.sh", import.meta.url))
   // Neutralize any wizard env from the outer shell, then apply per-test overrides.
   const cleanEnv = () => ({
-    NTFY_MODE: "", NTFY_SCOPE: "", NTFY_EVENTS: "", NTFY_PHONE: "",
+    NTFY_MODE: "", NTFY_HARNESSES: "", NTFY_SCOPE: "", NTFY_EVENTS: "", NTFY_PHONE: "",
     NTFY_INSTALL_DEPS: "", NTFY_SKIP_CONFIRM: "", CF_HOSTNAME: "", NTFY_CONFIG_FILE: "",
   })
   const runInst = (args: string[] = [], env: Record<string, string> = {}, input?: string) =>
@@ -762,6 +770,12 @@ async function main() {
     const r = runInst([], { NTFY_SCOPE: "machine" }, "")
     assert.equal(r.status, 2)
     assert.match(r.stderr, /NTFY_SCOPE must be global\|project/)
+  })
+
+  await test("invalid NTFY_HARNESSES fails fast → exit 2", () => {
+    const r = runInst([], { NTFY_HARNESSES: "opencode,unknown" }, "")
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /unknown harness/)
   })
 
   await test("invalid NTFY_EVENTS kind fails fast → exit 2", () => {
@@ -816,7 +830,7 @@ async function main() {
       const archive = Buffer.from(await response!.arrayBuffer())
       const listed = spawnSync("tar", ["-tzf", "-"], { input: archive, encoding: "utf8" })
       assert.equal(listed.status, 0, listed.stderr)
-      for (const file of ["index.ts", "package-lock.json", "src/index.ts", "scripts/setup-server.sh"]) {
+      for (const file of ["index.ts", "package-lock.json", "src/index.ts", "scripts/setup-server.sh", "scripts/install-harnesses.mjs", "adapters/command-code.ts", "adapters/pi.ts", "adapters/hermes/plugin.yaml"]) {
         assert.ok(listed.stdout.split("\n").includes(file), `archive missing ${file}`)
       }
       const installer = await (await fetch(`http://127.0.0.1:${port}/install.sh`)).text()

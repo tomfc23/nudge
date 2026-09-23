@@ -1,6 +1,6 @@
 # opencode-ntfy
 
-Get [ntfy](https://ntfy.sh) push notifications on your phone when [OpenCode](https://opencode.ai)
+Get [ntfy](https://ntfy.sh) push notifications on your phone when OpenCode, Command Code, Pi, or Hermes
 needs you — **questions & permission requests**, **finished tasks**, and **errors** — plus an
 `ntfy_notify` tool so the agent itself can ping you.
 
@@ -143,13 +143,30 @@ curl -fsSL https://nudge.tommyek.com/install.sh -o install.sh && sh install.sh
 ```
 
 The website serves the plugin archive used by the downloaded installer; no Git checkout is needed.
-`sh install.sh` asks five quick questions (access mode,
+`sh install.sh` asks six quick questions (access mode, agents,
 config scope, which notifications, phone), installs missing tools *with your consent*,
-provisions the server, writes `opencode.json`, and sends a test push you confirm on the
+provisions the server, wires the selected agents, and sends a test push you confirm on the
 phone. Every question has an env override (`NTFY_MODE=cloudflare CF_HOSTNAME=... sh
 install.sh`), so an agent can drive the exact same wizard non-interactively — or just
 hand [`INSTALL.md`](./INSTALL.md) to your agent and answer its questions in chat
 (SPEC §14).
+
+Select multiple agents with `NTFY_HARNESSES=opencode,command-code,pi,hermes`.
+The installer places a [Command Code mod](https://commandcode.ai/docs/mods), a
+[Pi extension](https://pi.dev/docs/latest/extensions), and a
+[Hermes plugin](https://hermes-agent.nousresearch.com/docs/user-guide/features/plugins)
+in their documented load paths. They share one ntfy topic. Global settings live in
+`~/.config/ntfy-archive/config.json`; project settings live under
+`~/.config/ntfy-archive/projects/` so the token stays outside the repository.
+Restart the selected agent after installation. Command Code and Pi project extensions
+load after project trust; Hermes is installed at user scope and reads the current
+project's settings. Command Code reports denied tool calls as permission notices;
+Pi has no built-in permission prompt event. Hermes reports approval requests.
+To remove these integrations, delete their `ntfy.ts` loader in the corresponding
+mods/extensions directory, run `hermes plugins disable ntfy` and remove
+`~/.hermes/plugins/ntfy`, then
+remove the matching ntfy-archive config file. The existing `UNINSTALL.md`
+covers OpenCode and the server.
 
 For a single mode — or full control — one script provisions any of them:
 
@@ -231,7 +248,8 @@ All keys are optional — defaults shown:
                         "idleMode": "heuristic", "patterns": ["\\\\bshould i\\\\b", "…"] },
           "finished": { "enabled": true, "priority": "default", "tags": ["heavy_check_mark"] },
           "error":    { "enabled": true, "priority": "high", "tags": ["rotating_light"], "cooldownSec": 60 },
-          "permission": { "enabled": true, "priority": "urgent", "tags": ["lock"] }
+          "permission": { "enabled": true, "priority": "urgent", "tags": ["lock"] },
+          "custom": { "enabled": true, "priority": "default", "tags": [] }
         },
 
         "dedupeWindowMs": 10000,

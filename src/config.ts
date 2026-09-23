@@ -45,7 +45,7 @@ export interface Config {
   token?: string
   /** The one topic every event kind publishes to (SPEC.md §13-D9). */
   topic: string
-  events: { question: QuestionCfg; finished: EventCfg; error: ErrorCfg; permission: EventCfg }
+  events: { question: QuestionCfg; finished: EventCfg; error: ErrorCfg; permission: EventCfg; custom: EventCfg }
   dedupeWindowMs: number
   publishTimeoutMs: number
   failureLogIntervalMs: number
@@ -156,6 +156,7 @@ export async function readConfig(options: PluginOptions, storage: StorageLike): 
   const evFinished = obj(ev.finished)
   const evError = obj(ev.error)
   const evPermission = obj(ev.permission)
+  const evCustom = obj(ev.custom)
 
   const idleMode: IdleMode =
     evQuestion.idleMode === "always" || evQuestion.idleMode === "off" ? evQuestion.idleMode : "heuristic"
@@ -194,6 +195,11 @@ export async function readConfig(options: PluginOptions, storage: StorageLike): 
         enabled: bool(evPermission.enabled, true),
         priority: priority(evPermission.priority, 5), // urgent
         tags: stringArray(evPermission.tags, ["lock"]),
+      },
+      custom: {
+        enabled: bool(evCustom.enabled, true),
+        priority: priority(evCustom.priority, 3),
+        tags: stringArray(evCustom.tags, []),
       },
     },
     dedupeWindowMs: num(options.dedupeWindowMs, 10_000),

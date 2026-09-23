@@ -17,7 +17,7 @@ import { spawn } from "node:child_process";
 
 const repo = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const root = join(repo, "site");
-const PACKAGE_FILES = ["index.ts", "install.sh", "package.json", "package-lock.json", "src", "scripts/setup-server.sh", "scripts/uninstall.sh", "README.md", "INSTALL.md", "UNINSTALL.md", "LICENSE"];
+const PACKAGE_FILES = ["index.ts", "install.sh", "package.json", "package-lock.json", "src", "adapters", "scripts/setup-server.sh", "scripts/install-harnesses.mjs", "scripts/uninstall.sh", "README.md", "INSTALL.md", "UNINSTALL.md", "LICENSE"];
 
 const SHARED = {
   "/install.sh": join(repo, "install.sh"),
@@ -112,7 +112,7 @@ const server = createServer((req, res) => {
       "x-content-type-options": "nosniff",
     });
     if (req.method === "HEAD") return res.end();
-    const archive = spawn("tar", ["-czf", "-", "-C", repo, ...PACKAGE_FILES]);
+    const archive = spawn("tar", ["--exclude=__pycache__", "-czf", "-", "-C", repo, ...PACKAGE_FILES]);
     archive.stdout.pipe(res);
     archive.on("error", (error) => res.destroy(error));
     archive.on("close", (code) => { if (code !== 0) res.destroy(new Error(`tar exited ${code}`)); });

@@ -80,14 +80,14 @@ export class Notifier {
   ) {}
 
   /** Publish an event-kind notification (dedupe/cooldown applied). */
-  notify(kind: EventKind, sessionID: string, input: NotifyInput): void {
+  notify(kind: EventKind, sessionID: string, input: NotifyInput): Promise<void> {
     const now = Date.now()
     const cfg = this.config.events
 
-    if (kind === "question" && !cfg.question.enabled) return
-    if (kind === "finished" && !cfg.finished.enabled) return
-    if (kind === "error" && !cfg.error.enabled) return
-    if (kind === "permission" && !cfg.permission.enabled) return
+    if (kind === "question" && !cfg.question.enabled) return Promise.resolve()
+    if (kind === "finished" && !cfg.finished.enabled) return Promise.resolve()
+    if (kind === "error" && !cfg.error.enabled) return Promise.resolve()
+    if (kind === "permission" && !cfg.permission.enabled) return Promise.resolve()
 
     let message = input.message
 
@@ -96,7 +96,7 @@ export class Notifier {
       const err = this.state.errorState.get(sessionID)
       if (err && now - err.last < cfg.error.cooldownMs) {
         err.suppressed += 1
-        return
+        return Promise.resolve()
       }
       const suppressed = err?.suppressed ?? 0
       this.state.errorState.set(sessionID, { last: now, suppressed: 0 })
@@ -105,11 +105,11 @@ export class Notifier {
       // §6.2 dedupe: (sessionID, kind) within the window…
       const key = `${sessionID}:${kind}`
       const last = this.state.recent.get(key) ?? 0
-      if (now - last < this.config.dedupeWindowMs) return
+      if (now - last < this.config.dedupeWindowMs) return Promise.resolve()
       // …and a fresh question suppresses a concurrent "finished".
       if (kind === "finished") {
         const lastQ = this.state.lastQuestion.get(sessionID) ?? 0
-        if (now - lastQ < this.config.dedupeWindowMs) return
+        if (now - lastQ < this.config.dedupeWindowMs) return Promise.resolve()
       }
       this.state.recent.set(key, now)
       if (kind === "question") this.state.lastQuestion.set(sessionID, now)
@@ -119,7 +119,7 @@ export class Notifier {
     const priority = input.priority ?? this.priorityFor(kind)
     const tags = input.tags ?? this.tagsFor(kind)
 
-    void this.publish(topic, {
+    return this.publish(topic, {
       topic,
       title: input.title,
       message,
@@ -130,6 +130,7 @@ export class Notifier {
 
   /** Bypass dedupe (used by the ntfy_notify tool). */
   custom(input: NotifyInput, sessionID = "custom"): Promise<void> {
+    if (!this.config.events.custom.enabled) return Promise.reject(new Error("custom notifications are disabled"))
     const topic = input.topic ?? this.config.topic
     return this.publish(topic, {
       topic,

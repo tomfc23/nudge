@@ -11,7 +11,7 @@
 #     NTFY_EVENTS=all NTFY_PHONE=ios NTFY_INSTALL_DEPS=1 NTFY_SKIP_CONFIRM=1 \
 #     sh install.sh
 #
-# What it does: 5 quick questions -> preflight (offers to install missing deps,
+# What it does: 6 quick questions -> preflight (offers to install missing deps,
 # with consent) -> provisions the server via scripts/setup-server.sh -> writes
 # opencode.json (JSON-safe, preserves everything else) -> walks you through the
 # one manual step (phone subscription) -> sends a test push -> summary.
@@ -19,6 +19,7 @@
 # Question env overrides:
 #   NTFY_MODE         local | tailscale | cloudflare    how the phone reaches the server
 #   NTFY_SCOPE        global | project                  which opencode.json to write
+#   NTFY_HARNESSES    csv: opencode,command-code,pi,hermes  harnesses to wire
 #   NTFY_EVENTS       all | csv of ENABLED kinds        question,permission,finished,error,custom
 #   NTFY_PHONE        ios | android | none              tailors the final instructions
 #   NTFY_INSTALL_DEPS 1 (auto-yes) | 0 (auto-no)        answers the Homebrew/log-in consents
@@ -50,12 +51,12 @@ usage() {
   cat <<USAGE
 opencode-ntfy installer
 
-  sh install.sh                     interactive wizard (5 questions)
+  sh install.sh                     interactive wizard (6 questions)
   NTFY_MODE=... sh install.sh       scripted / agent-driven (see header env list)
 
-Questions: access mode (local|tailscale|cloudflare) -> config scope (global|project)
+Questions: access mode (local|tailscale|cloudflare) -> harnesses -> config scope (global|project)
 -> which notifications (all or per-kind) -> phone OS -> (preflight fixes deps).
-Env overrides: NTFY_MODE NTFY_SCOPE NTFY_EVENTS NTFY_PHONE NTFY_INSTALL_DEPS
+Env overrides: NTFY_MODE NTFY_HARNESSES NTFY_SCOPE NTFY_EVENTS NTFY_PHONE NTFY_INSTALL_DEPS
 NTFY_SKIP_CONFIRM CF_HOSTNAME NTFY_PORT LAN_IP NTFY_CONFIG_FILE NTFY_SETUP_DIR
 NTFY_PLUGIN_DIR NTFY_SITE_URL NTFY_REPO_URL
 
@@ -130,6 +131,14 @@ if [ -n "${NTFY_SCOPE:-}" ]; then
     *) die 2 "NTFY_SCOPE must be global|project (got: $NTFY_SCOPE)" ;;
   esac
 fi
+if [ -n "${NTFY_HARNESSES:-}" ]; then
+  case "$NTFY_HARNESSES" in ,*|*,|*,,*) die 2 "NTFY_HARNESSES must be a comma-separated list without empty entries" ;; esac
+  OLDIFS="$IFS"; IFS=","
+  for h in $NTFY_HARNESSES; do
+    case "$h" in opencode|command-code|pi|hermes) ;; *) IFS="$OLDIFS"; die 2 "NTFY_HARNESSES: unknown harness '$h'" ;; esac
+  done
+  IFS="$OLDIFS"
+fi
 if [ -n "${NTFY_EVENTS:-}" ] && [ "$NTFY_EVENTS" != "all" ]; then
   OLDIFS="$IFS"; IFS=","
   for e in $NTFY_EVENTS; do
@@ -157,7 +166,7 @@ info "provisions a self-hosted ntfy server, wires the plugin, sends a test push.
 info "nothing changes until you answer the questions (Ctrl-C is safe)."
 
 # ------------------------------------------------- step 1: access mode (+ branch inputs)
-say "1/5 — how should your phone reach the ntfy server?"
+say "1/6 — how should your phone reach the ntfy server?"
 if [ -n "${NTFY_MODE:-}" ]; then
   MODE="$NTFY_MODE"
   info "mode: $MODE (NTFY_MODE)"
@@ -200,7 +209,7 @@ case "$MODE" in
     fi
     ;;
   tailscale)
-    info "Tailscale login will be verified in preflight (step 2/5)"
+    info "Tailscale login will be verified in preflight (step 2/6)"
     ;;
 esac
 
@@ -240,7 +249,7 @@ SETUP="$REPO_DIR/scripts/setup-server.sh"
 [ -f "$SETUP" ] || die 3 "setup script missing at $SETUP"
 
 # ------------------------------------------------------------------ step 2: preflight loop
-say "2/5 — preflight (mode: $MODE) — verifies tools, logins, and a free port"
+say "2/6 — preflight (mode: $MODE) — verifies tools, logins, and a free port"
 PF_CODE=1
 attempt=1
 while [ "$attempt" -le 3 ]; do
@@ -366,8 +375,22 @@ if [ "$PF_CODE" != "0" ]; then
   die "$PF_CODE" "preflight still failing after $((attempt - 1)) attempt(s) — re-run this installer"
 fi
 
-# ------------------------------------------------- step 3: config scope
-say "3/5 — where should the plugin be configured?"
+# ------------------------------------------------- step 3: harnesses
+say "3/6 — which agents should send notifications?"
+if [ -n "${NTFY_HARNESSES:-}" ]; then
+  HARNESSES="$NTFY_HARNESSES"
+else
+  HARNESSES=""
+  for h in opencode command-code pi hermes; do
+    hdef=n; [ "$h" = opencode ] && hdef=y
+    if ask_yn "  + $h?" "$hdef"; then HARNESSES="${HARNESSES:+$HARNESSES,}$h"; fi
+  done
+fi
+[ -n "$HARNESSES" ] || die 2 "select at least one harness"
+info "agents: $HARNESSES"
+
+# ------------------------------------------------- step 4: config scope
+say "4/6 — where should the plugin be configured?"
 if [ -n "${NTFY_SCOPE:-}" ]; then
   SCOPE="$NTFY_SCOPE"
   info "scope: $SCOPE (NTFY_SCOPE)"
@@ -389,8 +412,8 @@ else
   CONFIG_FILE="$PWD/opencode.json"
 fi
 
-# ------------------------------------------------- step 4: which notifications
-say "4/5 — which notifications should reach your phone?"
+# ------------------------------------------------- step 5: which notifications
+say "5/6 — which notifications should reach your phone?"
 EV_ALL=1
 EV_LIST="question permission finished error custom"
 if [ -n "${NTFY_EVENTS:-}" ]; then
@@ -423,8 +446,8 @@ else
   fi
 fi
 
-# ------------------------------------------------- step 5: phone
-say "5/5 — which phone will subscribe?"
+# ------------------------------------------------- step 6: phone
+say "6/6 — which phone will subscribe?"
 if [ -n "${NTFY_PHONE:-}" ]; then
   PHONE="$NTFY_PHONE"
   info "phone: $PHONE (NTFY_PHONE)"
@@ -453,10 +476,13 @@ SERVER_URL="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).serverUr
 TOKEN="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).token)' "$SETUP_JSON")"
 ok "server ready: $SERVER_URL"
 
-# ------------------------------------------------------------------ write opencode.json
+# ------------------------------------------------------------------ write harness config
 say "writing plugin config"
 TOPIC_PROPOSED="$(node -e 'process.stdout.write("opencode-"+require("crypto").randomBytes(5).toString("hex"))')"
 export NTFY_W="$SERVER_URL|$TOKEN|$TOPIC_PROPOSED|$EV_ALL|$EV_LIST"
+TOPIC="$TOPIC_PROPOSED"
+case ",$HARNESSES," in
+  *,opencode,*)
 TOPIC="$(node -e '
 var fs = require("fs"), path = require("path");
 var file = process.argv[1], pluginPath = process.argv[2];
@@ -502,6 +528,21 @@ if (!ok) { console.error("config verification failed for " + file); process.exit
 process.stdout.write(opts.baseTopic);
 ' "$CONFIG_FILE" "$REPO_DIR")" || die $? "writing $CONFIG_FILE failed"
 ok "config written: $CONFIG_FILE"
+    ;;
+esac
+case "$HARNESSES" in
+  opencode) ;;
+  *)
+    export NTFY_SERVER_URL="$SERVER_URL" NTFY_TOKEN="$TOKEN" NTFY_TOPIC="$TOPIC"
+    if [ "$EV_ALL" = 1 ]; then export NTFY_EVENTS=all
+    else export NTFY_EVENTS="$(printf '%s' "$EV_LIST" | tr ' ' ',')"; fi
+    INSTALL_OUTPUT="$(node "$REPO_DIR/scripts/install-harnesses.mjs" "$REPO_DIR" "$SCOPE" "$HARNESSES")" || die 2 "harness install failed"
+    printf '%s\n' "$INSTALL_OUTPUT"
+    TOPIC="$(printf '%s\n' "$INSTALL_OUTPUT" | sed -n 's/^topic: //p')"
+    [ -n "$TOPIC" ] || die 5 "harness installer did not report a topic"
+    case ",$HARNESSES," in *,opencode,*) ;; *) CONFIG_FILE="${INSTALL_OUTPUT##*config: }"; ok "config written: $CONFIG_FILE" ;; esac
+    ;;
+esac
 ok "topic (kept if this was installed before): $TOPIC"
 
 # ------------------------------------------------------------------ phone instructions
@@ -556,9 +597,10 @@ if [ "${NTFY_SKIP_CONFIRM:-}" != "1" ]; then
 fi
 
 # ------------------------------------------------------------------ summary
-say "done — opencode-ntfy is installed"
+say "done — Nudge is installed"
 info "server: $SERVER_URL   (mode: $MODE, port: ${NTFY_PORT:-80})"
 info "topic:  $TOPIC   (one topic for all kinds — D9)"
+info "agents: $HARNESSES (restart each selected agent once)"
 info "config: $CONFIG_FILE"
 info "plugin: $REPO_DIR"
 cat <<EOF
@@ -572,6 +614,7 @@ Customize later in $CONFIG_FILE (defaults are already right for most people):
 
 Switch access modes later:  re-run this installer (or scripts/setup-server.sh <mode>),
 then RE-SUBSCRIBE the phone — subscriptions are keyed by server URL (wake hash).
-Uninstall: remove the plugin entry from $CONFIG_FILE; the server can be removed with:
+Uninstall: remove the selected agents' loader files and config; see UNINSTALL.md
+for OpenCode/server removal. The server can be removed with:
   docker compose -f \$HOME/ntfy/docker-compose.yml down
 EOF

@@ -34,10 +34,11 @@ without the verification table.
 | 1 | **How should the phone reach the server?** local (same Wi-Fi) / tailscale (private VPN) / cloudflare (public URL) | `NTFY_MODE` |
 | 1a | cloudflare only: **public hostname?** (e.g. `ntfy.example.com`) | `CF_HOSTNAME` |
 | 1b | local only: show the detected LAN IP from preflight and confirm it | `LAN_IP` |
-| 2 | **Where to configure?** global (`~/.config/opencode/opencode.json`, all projects) or project (`<project>/opencode.json`) | `NTFY_SCOPE` |
-| 3 | **Which notifications?** all five (recommended) or which to disable: question, permission, finished, error, custom | `NTFY_EVENTS` (`all` or csv of the **enabled** kinds) |
-| 4 | **Which phone?** ios / android / none | `NTFY_PHONE` |
-| 5 | **May I install missing tools via Homebrew and run cloudflared/tailscale logins in your browser?** | `NTFY_INSTALL_DEPS` (`1`/`0`) |
+| 2 | **Which agents?** OpenCode, Command Code, Pi, Hermes (select any combination) | `NTFY_HARNESSES` (csv of selected ids: `opencode,command-code,pi,hermes`) |
+| 3 | **Where to configure?** global (all projects) or project (current project only) | `NTFY_SCOPE` |
+| 4 | **Which notifications?** all five (recommended) or which to disable: question, permission, finished, error, custom | `NTFY_EVENTS` (`all` or csv of the **enabled** kinds) |
+| 5 | **Which phone?** ios / android / none | `NTFY_PHONE` |
+| 6 | **May I install missing tools via Homebrew and run cloudflared/tailscale logins in your browser?** | `NTFY_INSTALL_DEPS` (`1`/`0`) |
 
 If you have a checkout, run the commands below from its root. Otherwise,
 download the installer into the user's project directory (or another working
@@ -89,14 +90,14 @@ Carry the final values forward: `CF_HOSTNAME`, `NTFY_PORT`, `LAN_IP`.
 drops every env var (put comments on their own line, or don't use any):
 
 ```bash
-NTFY_MODE=cloudflare CF_HOSTNAME=ntfy.example.com NTFY_SCOPE=global NTFY_EVENTS=all NTFY_PHONE=ios NTFY_INSTALL_DEPS=1 NTFY_SKIP_CONFIRM=1 sh install.sh
+NTFY_MODE=cloudflare CF_HOSTNAME=ntfy.example.com NTFY_HARNESSES=opencode,command-code,pi,hermes NTFY_SCOPE=global NTFY_EVENTS=all NTFY_PHONE=ios NTFY_INSTALL_DEPS=1 NTFY_SKIP_CONFIRM=1 sh install.sh
 ```
 
-Env values (from Q1-Q5): `NTFY_MODE` = local|tailscale|cloudflare ·
+Env values (from Q1-Q6): `NTFY_MODE` = local|tailscale|cloudflare ·
 `CF_HOSTNAME` cloudflare only (`LAN_IP=...` for local) · `NTFY_SCOPE` =
-global|project (for project, run from the project root) · `NTFY_EVENTS` = `all`
+global|project (for project, run from the project root) · `NTFY_HARNESSES` = csv of selected agents · `NTFY_EVENTS` = `all`
 or csv of the enabled kinds · `NTFY_PHONE` = ios|android|none ·
-`NTFY_INSTALL_DEPS=1` only after the user said yes in Q5 · `NTFY_SKIP_CONFIRM=1`
+`NTFY_INSTALL_DEPS=1` only after the user said yes in Q6 · `NTFY_SKIP_CONFIRM=1`
 — you own the phone-confirmation in chat (Steps 3-4) · optional
 `NTFY_CONFIG_FILE=<path>` = exact config file, overrides the scope (only for
 dry runs into a scratch file — never needed for a normal install).
@@ -118,6 +119,12 @@ smoke line above, is where Step 5's "server setup" row comes from. The
 ## Step 3 — verify the config, then walk the user through the phone
 
 Read back what was written (use the path from `config written:`):
+
+For installs without OpenCode, the file is standalone JSON with `serverUrl`,
+`token`, and `baseTopic` at the top level. It lives in
+`~/.config/ntfy-archive/config.json` for global scope or under
+`~/.config/ntfy-archive/projects/` for project scope. Check those fields directly.
+For installs including OpenCode, check its `opencode.json` entry:
 
 ```bash
 node -e '
@@ -168,9 +175,10 @@ curl -s -o /dev/null -w '%{http_code}\n' -m 10 \
 
 ## Step 5 — finish and report
 
-Remind the user: **start (or restart) OpenCode once** — a newly added plugin
-loads on next start; option changes hot-reload afterwards. The `[ntfy]`
-startup log prints the subscribe topic — cross-check it against `baseTopic`.
+Remind the user: **start (or restart) each selected agent once** — a newly added plugin
+loads on next start. OpenCode's `[ntfy]` startup log prints the subscribe topic —
+cross-check it against `baseTopic`.
+If OpenCode was selected, start (or restart) OpenCode once.
 
 Report exactly this table (checked items only if actually observed):
 
@@ -181,6 +189,7 @@ config ................. <path> (serverUrl/token/baseTopic present)
 server-side test push ... HTTP 200 (install.sh)
 phone test push ......... HTTP 200 + user confirmed arrival: yes/no/pending
 OpenCode restart ........ reminded user (needed once for a new plugin)
+Other selected agents .. reminded user to restart once
 ```
 
 ---
