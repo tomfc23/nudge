@@ -1,6 +1,16 @@
 #!/usr/bin/env node
 // Codex Stop and PermissionRequest hooks. Input is one JSON object on stdin.
 import { readFileSync } from "node:fs"
+import { homedir } from "node:os"
+import { join } from "node:path"
+
+function autoReview() {
+  try {
+    // ponytail: global config approximates the active reviewer; use a post-routing hook if Codex adds one.
+    const root = readFileSync(join(process.env.CODEX_HOME || join(homedir(), ".codex"), "config.toml"), "utf8").split(/^\s*\[/m, 1)[0]
+    return /^\s*approvals_reviewer\s*=\s*["']auto_review["']\s*(?:#.*)?$/m.test(root)
+  } catch { return false }
+}
 
 const clip = (value, max = 160) => {
   const text = String(value ?? "").replace(/```[\s\S]*?```/g, "").replace(/\s+/g, " ").trim()
@@ -22,6 +32,7 @@ async function main() {
 
   let kind, title, message, priority, tags
   if (event.hook_event_name === "PermissionRequest") {
+    if (["bypassPermissions", "dontAsk"].includes(event.permission_mode) || autoReview()) return
     kind = "permission"
     title = "Codex: Permission needed"
     message = clip(event.tool_input?.description || event.tool_name || "Codex needs approval to continue.")

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
-import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -30,13 +30,23 @@ writeFileSync(mock, `import { writeFileSync } from "node:fs";
 globalThis.fetch = async (_url, options) => { writeFileSync(process.env.NUDGE_TEST_OUT, JSON.stringify({ url: _url, ...options, signal: undefined })); return { ok: true }; };
 `)
 const invoke = (event) => spawnSync(process.execPath, ["--import", mock, adapter, config], {
-  encoding: "utf8", input: JSON.stringify(event), env: { ...process.env, NUDGE_TEST_OUT: out },
+  encoding: "utf8", input: JSON.stringify(event), env: { ...process.env, CODEX_HOME: dir, NUDGE_TEST_OUT: out },
 })
 assert.equal(invoke({ hook_event_name: "PermissionRequest", tool_name: "Bash", tool_input: { description: "Run tests" } }).status, 0)
 let sent = JSON.parse(readFileSync(out, "utf8"))
 assert.equal(sent.headers.Authorization, "Bearer test-token")
 assert.equal(JSON.parse(sent.body).priority, 5)
 assert.equal(JSON.parse(sent.body).topic, "nudge-test")
+writeFileSync(join(dir, "config.toml"), 'approvals_reviewer = "auto_review"\n')
+unlinkSync(out)
+assert.equal(invoke({ hook_event_name: "PermissionRequest", tool_name: "Bash" }).status, 0)
+assert.equal(existsSync(out), false, "auto-reviewed request must not ping")
+writeFileSync(join(dir, "config.toml"), 'approvals_reviewer = "user"\n')
+assert.equal(invoke({ hook_event_name: "PermissionRequest", tool_name: "Bash" }).status, 0)
+assert.equal(existsSync(out), true, "Ask mode must still ping")
+unlinkSync(out)
+assert.equal(invoke({ hook_event_name: "PermissionRequest", permission_mode: "bypassPermissions", tool_name: "Bash" }).status, 0)
+assert.equal(existsSync(out), false, "Full access must not ping")
 assert.equal(invoke({ hook_event_name: "Stop", last_assistant_message: "All done." }).stdout, "{}\n")
 sent = JSON.parse(readFileSync(out, "utf8"))
 assert.equal(JSON.parse(sent.body).title, "Codex: Finished")

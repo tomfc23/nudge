@@ -22,6 +22,9 @@ Codex currently sends **finished**, **question** (when its final reply asks one)
 **permission** notifications. OpenCode also supports tool/session **errors** and the
 `ntfy_notify` custom tool. Codex's hook data does not provide the same OpenCode event
 stream, so these latter two features are OpenCode-only.
+Codex permission pings are muted when global `approvals_reviewer = "auto_review"` is set
+or the hook reports Full access/never ask. Codex does not expose per-chat reviewer overrides
+to hooks, so a chat set to Ask while the global setting is Auto-review remains muted.
 
 ## OpenCode manual setup
 
