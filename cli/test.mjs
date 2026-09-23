@@ -396,6 +396,7 @@ test("add, status, and remove support Command Code, Pi, and Hermes", () =>
     assert.equal(shared.token, OUR_ENTRY.token)
     const status = JSON.parse(runCli(["status", "--json"], home).stdout)
     for (const name of ["command-code", "pi", "hermes"]) assert.equal(status.harnesses[name].present, true)
+    assert.ok(status.inventory.some((item) => item.id.startsWith("shared-config:") && item.status === "present"))
     for (const name of ["command-code", "pi", "hermes"]) {
       const removed = runCli(["remove", name, "--json"], home)
       assert.equal(removed.status, 0, `${name}: ${removed.stderr}`)

@@ -132,7 +132,10 @@ run_standalone() { # <--scan|--remove> appends verified harness loader results
 }
 shared_config_note() { # settings may be shared by other harnesses; leave them for manual review
   for f in "$HOME/.config/ntfy-archive/config.json" "$(node -e 'const {createHash}=require("node:crypto"); const {join}=require("node:path"); process.stdout.write(join(process.env.HOME,".config/ntfy-archive/projects",createHash("sha256").update(process.cwd()).digest("hex")+".json"))')"; do
-    [ -f "$f" ] && add_item "shared-config:$f" manual "left in place; delete only if no Nudge harness still uses it"
+    if [ -f "$f" ]; then
+      if [ "$1" = inventory ]; then add_item "shared-config:$f" present "$f"
+      else add_item "shared-config:$f" manual "left in place; delete only if no Nudge harness still uses it"; fi
+    fi
   done
   return 0
 }
@@ -209,7 +212,7 @@ collect_inventory() {
 $CODEX_DIRS
 EOF
   run_standalone --scan
-  shared_config_note
+  shared_config_note inventory
 
   if [ -d "$CLONE_DEFAULT" ]; then add_item "clone-default" present "$CLONE_DEFAULT"; else add_item "clone-default" absent ""; fi
 
@@ -319,7 +322,7 @@ run_l1() {
 $CODEX_DIRS
 EOF
   run_standalone --remove
-  shared_config_note
+  shared_config_note remove
   if [ "$REMOVED" = 1 ]; then
     add_item "restart" manual "start (or restart) OpenCode once to unload the plugin"
     add_item "phone-subscription" manual "left in the app so a reinstall resubscribes to the same topic — delete it there if you are done for good"
