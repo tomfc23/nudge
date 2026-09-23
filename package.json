@@ -1,6 +1,6 @@
 {
   "name": "opencode-ntfy",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Nudge notifications for OpenCode, Codex, Command Code, Pi, and Hermes via a self-hosted ntfy server",
   "type": "module",
   "license": "MIT",
