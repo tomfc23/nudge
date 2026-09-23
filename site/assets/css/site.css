@@ -875,56 +875,47 @@ main > .section:first-child {
 
 /* per-provider placement, size, tilt and drift */
 .pmark--opencode {
-  --x: -37; --y: 88; --s: 58; --rot: 7; --depth: 0.6; --d: 340ms; --dur: 9s;
+  --x: -32; --y: 62; --s: 70; --rot: 7; --depth: 0.6; --d: 340ms; --dur: 9s;
   --dx: 3px; --dy: -7px; --wob: 2; --fx: -26px; --fy: -26px;
 }
 
-.pmark--antigravity {
-  --x: 28; --y: 26; --s: 66; --rot: -6; --depth: 0.6; --d: 380ms; --dur: 10.2s;
-  --dx: -3px; --dy: -8px; --wob: -2; --fx: 26px; --fy: -22px;
-  --tint: oklch(0.65 0.12 300 / 0.26);
+.pmark--hermes .pmark__card {
+  overflow: hidden;
 }
 
-.pmark--claude {
-  --x: -8; --y: 92; --s: 86; --rot: -9; --depth: 1.1; --d: 200ms; --dur: 10.8s;
-  --dx: 4px; --dy: -10px; --wob: -2; --fx: -40px; --fy: 10px;
-  --tint: oklch(0.70 0.13 45 / 0.26);
+/* The opencode mark is a solid frame rather than a line-art glyph, so at the
+   shared 58% it reads heavier than its neighbours; a smaller box keeps it
+   centred with even breathing room. */
+.pmark--opencode .pmark__card img {
+  width: 46%;
+  height: 46%;
 }
 
 .pmark--codex {
-  --x: 39; --y: 108; --s: 78; --rot: 8; --depth: 1.1; --d: 260ms; --dur: 9.4s;
+  --x: 28; --y: 96; --s: 78; --rot: 8; --depth: 1.1; --d: 260ms; --dur: 9.4s;
   --dx: -4px; --dy: -9px; --wob: 2; --fx: 40px; --fy: 14px;
 }
 
-.pmark--grok {
-  --x: -40; --y: 168; --s: 62; --rot: 5; --depth: 0.85; --d: 300ms; --dur: 11.4s;
-  --dx: 3px; --dy: -8px; --wob: 2; --fx: -34px; --fy: 18px;
-}
-
-.pmark--cursor {
-  --x: 10; --y: 210; --s: 70; --rot: -7; --depth: 0.85; --d: 420ms; --dur: 8.2s;
-  --dx: -3px; --dy: -9px; --wob: -2; --fx: 30px; --fy: 22px;
-}
-
 .pmark--pi {
-  --x: 38; --y: 268; --s: 72; --rot: 6; --depth: 0.9; --d: 440ms; --dur: 10.6s;
+  --x: -29; --y: 270; --s: 72; --rot: 6; --depth: 0.9; --d: 440ms; --dur: 10.6s;
   --dx: 3px; --dy: -8px; --wob: 2; --fx: 36px; --fy: 20px;
 }
 
 .pmark--command-code {
-  --x: -27; --y: 300; --s: 76; --rot: -6; --depth: 0.9; --d: 500ms; --dur: 9.8s;
+  --x: 29; --y: 344; --s: 76; --rot: -6; --depth: 0.9; --d: 500ms; --dur: 9.8s;
   --dx: -4px; --dy: -9px; --wob: -2; --fx: -38px; --fy: 22px;
 }
 
-.pmark--gemini {
-  --x: -40; --y: 396; --s: 60; --rot: -4; --depth: 0.7; --d: 560ms; --dur: 10.4s;
-  --dx: 3px; --dy: -7px; --wob: 2; --fx: -30px; --fy: 26px;
-  --tint: oklch(0.68 0.12 250 / 0.26);
+.pmark--hermes {
+  --x: 2; --y: 188; --s: 82; --rot: 6; --depth: 0.7; --d: 620ms; --dur: 9.2s;
+  --dx: -3px; --dy: -8px; --wob: -2; --fx: 32px; --fy: 28px;
 }
 
-.pmark--cline {
-  --x: 28; --y: 420; --s: 66; --rot: 6; --depth: 0.7; --d: 620ms; --dur: 9.2s;
-  --dx: -3px; --dy: -8px; --wob: -2; --fx: 32px; --fy: 28px;
+.pmark--hermes .pmark__card img {
+  width: 76%;
+  height: 76%;
+  border-radius: 18%;
+  filter: contrast(1000%);
 }
 
 /* ---------- harnesses ----------
@@ -957,8 +948,7 @@ main > .section:first-child {
   transition: background-color var(--t-base) var(--ease);
 }
 
-/* The host runtime is not one of the nine clients: it leads the list on its
-   own full-width row at a heavier weight. */
+/* The host runtime leads the list on its own full-width row. */
 .harness--host {
   grid-column: 1 / -1;
   gap: 18px;

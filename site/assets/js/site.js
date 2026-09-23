@@ -133,7 +133,7 @@
       "pointermove",
       function (event) {
         // Off screen there is nothing to tilt, and writing the vars would
-        // restyle ten marks for no reason.
+        // restyle the marks for no reason.
         if (hero && hero.classList.contains("is-offscreen")) return;
         targetX = (event.clientX / window.innerWidth - 0.5) * 26;
         targetY = (event.clientY / window.innerHeight - 0.5) * 18;
@@ -233,7 +233,7 @@
     });
 
     function sendNext() {
-      send(marks[[0, 2, 3, 5][next % 4]], true);
+      send(marks[next % marks.length], true);
       setTimeout(sendNext, 40000);
     }
     if (window.IntersectionObserver) {
